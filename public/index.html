@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Mua sắm công — Theo dõi gói thầu</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="header__brand">
+          <div class="header__logo">MS</div>
+          <div>
+            <p class="eyebrow">Hệ thống theo dõi tự động</p>
+            <h1>AI Mua sắm công</h1>
+            <p class="subtitle">Gói thầu mới từ muasamcong.mpi.gov.vn</p>
+          </div>
+        </div>
+        <div class="header__actions">
+          <button id="refreshBtn" class="btn btn--primary" type="button">
+            Quét ngay
+          </button>
+        </div>
+      </header>
+
+      <section class="stats" id="stats">
+        <a class="stat-card stat-card--link" href="#/luu" data-workflow="luu" id="statSavedCard">
+          <span class="stat-card__label">Lưu</span>
+          <strong class="stat-card__value" id="statSaved">—</strong>
+          <span class="stat-card__hint">Xem gói đánh dấu Lưu</span>
+        </a>
+        <a class="stat-card stat-card--link" href="#/theo-doi" data-workflow="theo_doi" id="statTrackedCard">
+          <span class="stat-card__label">Theo dõi</span>
+          <strong class="stat-card__value" id="statTracked">—</strong>
+          <span class="stat-card__hint">Xem gói đang theo dõi</span>
+        </a>
+        <article class="stat-card">
+          <span class="stat-card__label">Lần quét gần nhất</span>
+          <strong class="stat-card__value stat-card__value--small" id="statLastCheck">—</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-card__label">TBMT mới nhất trên web</span>
+          <strong class="stat-card__value stat-card__value--small" id="statLastPublic">—</strong>
+        </article>
+      </section>
+
+      <section class="toolbar">
+        <div class="search-box">
+          <input
+            id="searchInput"
+            type="search"
+            placeholder="Tìm theo mã TBMT, tên gói, chủ đầu tư, địa điểm..."
+          />
+        </div>
+        <div class="toolbar__filters">
+          <select id="provinceFilter" aria-label="Lọc tỉnh thành">
+            <option value="">Tất cả tỉnh/thành</option>
+          </select>
+          <select id="fieldFilter" aria-label="Lọc lĩnh vực">
+            <option value="">Tất cả lĩnh vực</option>
+            <option value="HH">Hàng hóa</option>
+            <option value="XL">Xây lắp</option>
+            <option value="TV">Tư vấn</option>
+            <option value="PT">Phi tư vấn</option>
+          </select>
+          <select id="sortSelect" aria-label="Sắp xếp">
+            <option value="publicDate:desc">Mới đăng nhất</option>
+            <option value="crawledAt:desc">Mới quét nhất</option>
+            <option value="bidCloseDate:asc">Sắp đóng thầu</option>
+            <option value="bidName:asc">Tên A-Z</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div>
+            <h2>Danh sách gói thầu</h2>
+            <p id="resultSummary">Đang tải...</p>
+          </div>
+          <span id="sourceBadge" class="source-badge source-badge--saved">Dữ liệu đã lưu</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Mã TBMT</th>
+                <th>Tên gói thầu</th>
+                <th>Chủ đầu tư</th>
+                <th>Tỉnh/Thành</th>
+                <th>Lĩnh vực</th>
+                <th>Ngày đăng</th>
+                <th>Đóng thầu</th>
+                <th>Trạng thái</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tenderTableBody">
+              <tr>
+                <td colspan="9" class="empty">Đang tải dữ liệu...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+      </section>
+    </div>
+
+    <dialog id="detailDialog" class="dialog">
+      <div class="dialog__content">
+        <button class="dialog__close" id="closeDialogBtn" type="button" aria-label="Đóng">
+          ×
+        </button>
+        <div id="detailContent"></div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

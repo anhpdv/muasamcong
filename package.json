@@ -1,0 +1,17 @@
+{
+  "name": "ai-muasamcong",
+  "version": "1.0.0",
+  "description": "Theo dõi và crawl gói thầu mới từ muasamcong.mpi.gov.vn",
+  "type": "module",
+  "scripts": {
+    "once": "node src/index.js once",
+    "watch": "node src/index.js watch",
+    "init": "node src/index.js init",
+    "start": "node src/server.js",
+    "ui": "node src/server.js",
+    "schedule": "node src/scheduler.js",
+    "schedule:now": "node src/scheduler.js now",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:reload": "pm2 reload ecosystem.config.cjs --update-env"
+  }
+}

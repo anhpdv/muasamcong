@@ -1,0 +1,31 @@
+{
+  "baseUrl": "https://muasamcong.mpi.gov.vn",
+  "searchEndpoint": "/o/egp-portal-home/services/smart/search",
+  "pageSize": 10,
+  "pollIntervalMinutes": 5,
+  "dataDir": "data",
+  "jsonlFile": "tenders.jsonl",
+  "trackedFile": "tracked.jsonl",
+  "csvFile": "tenders.csv",
+  "stateFile": "state.json",
+  "statusesFile": "tender-statuses.json",
+  "scheduleStateFile": "schedule-state.json",
+  "initMarkSeenOnly": true,
+  "webPort": 3000,
+  "schedule": {
+    "enabled": true,
+    "timezone": "Asia/Ho_Chi_Minh",
+    "times": ["08:00", "12:00", "17:00"],
+    "checkIntervalSeconds": 30,
+    "filters": {
+      "provCodes": ["08", "44"],
+      "provNames": ["Tỉnh Tuyên Quang", "Tỉnh Quảng Trị"],
+      "investFields": ["HH", "PT", "TV"],
+      "sortBy": "publicDate",
+      "sortType": "DESC",
+      "publicDateToday": true
+    },
+    "pageSize": 10,
+    "maxPages": 5
+  }
+}
