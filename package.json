@@ -10,8 +10,6 @@
     "start": "node src/server.js",
     "ui": "node src/server.js",
     "schedule": "node src/scheduler.js",
-    "schedule:now": "node src/scheduler.js now",
-    "pm2:start": "pm2 start ecosystem.config.cjs",
-    "pm2:reload": "pm2 reload ecosystem.config.cjs --update-env"
+    "schedule:now": "node src/scheduler.js now"
   }
 }
