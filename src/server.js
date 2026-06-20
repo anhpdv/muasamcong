@@ -276,7 +276,7 @@ function createServer(config, paths) {
 
 const config = await loadConfig();
 const paths = resolveDataPaths(config, rootDir);
-const port = config.webPort || 3000;
+const port = Number(process.env.PORT || config.webPort || 3000);
 const server = createServer(config, paths);
 
 server.listen(port, () => {
