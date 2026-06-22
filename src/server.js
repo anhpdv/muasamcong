@@ -14,6 +14,7 @@ import {
 import { runMonitor } from "./monitor.js";
 import { maybeRunDueScans } from "./scheduledScan.js";
 import { scanTenders } from "./scan.js";
+import { fetchTenderDocuments } from "./tenderDocuments.js";
 import {
   setWorkflowStatus,
   WORKFLOW_STATUS_OPTIONS,
@@ -146,6 +147,27 @@ function createServer(config, paths) {
       const statusMatch = url.pathname.match(
         /^\/api\/tenders\/([^/]+)\/status$/,
       );
+
+      const documentsMatch = url.pathname.match(
+        /^\/api\/tenders\/([^/]+)\/documents$/,
+      );
+
+      if (documentsMatch && request.method === "GET") {
+        const id = decodeURIComponent(documentsMatch[1]);
+        const catalog = await loadTenderCatalog(paths);
+        const tender = catalog.find(
+          (item) => item.id === id || item.notifyNo === id || tenderKey(item) === id,
+        );
+
+        if (!tender) {
+          sendJson(response, 404, { error: "Không tìm thấy gói thầu" });
+          return;
+        }
+
+        const documents = await fetchTenderDocuments(config, tender);
+        sendJson(response, 200, documents);
+        return;
+      }
 
       if (statusMatch && request.method === "PATCH") {
         const id = decodeURIComponent(statusMatch[1]);

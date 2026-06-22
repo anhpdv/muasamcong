@@ -39,6 +39,7 @@ const elements = {
   sourceBadge: document.getElementById("sourceBadge"),
   pagination: document.getElementById("pagination"),
   refreshBtn: document.getElementById("refreshBtn"),
+  searchSubmitBtn: document.getElementById("searchSubmitBtn"),
   detailDialog: document.getElementById("detailDialog"),
   detailContent: document.getElementById("detailContent"),
   closeDialogBtn: document.getElementById("closeDialogBtn"),
@@ -253,7 +254,7 @@ function renderTable(items) {
       (item) => `
         <tr>
           <td>
-            <strong>${escapeHtml(item.notifyNo)}</strong>
+            <span class="tender-code">${escapeHtml(item.notifyNo)}</span>
             <div class="tender-meta">${escapeHtml(item.planNo || "—")}</div>
           </td>
           <td>
@@ -267,7 +268,7 @@ function renderTable(items) {
           <td>${escapeHtml(item.bidCloseDateLabel)}</td>
           <td>${renderStatusSelect(item)}</td>
           <td>
-            <button class="btn btn--ghost" data-id="${escapeHtml(item.id)}" type="button">
+            <button class="btn btn--ghost btn--sm" data-id="${escapeHtml(item.id)}" type="button">
               Chi tiết
             </button>
           </td>
@@ -292,10 +293,109 @@ function renderPagination(pagination) {
   `;
 }
 
-function renderDetail(item) {
+function renderFileList(files, emptyText) {
+  if (!files?.length) {
+    return `<p class="doc-empty">${escapeHtml(emptyText)}</p>`;
+  }
+
+  return `
+    <ul class="file-list">
+      ${files
+        .map(
+          (file) => `
+            <li class="file-list__item">
+              <div>
+                <strong>${escapeHtml(file.name)}</strong>
+                ${file.section ? `<div class="tender-meta">${escapeHtml(file.section)}</div>` : ""}
+              </div>
+              <a class="btn btn--ghost" href="${escapeAttr(file.url)}" target="_blank" rel="noopener noreferrer">
+                Tải về
+              </a>
+            </li>
+          `,
+        )
+        .join("")}
+    </ul>
+  `;
+}
+
+function renderDocumentsSection(documents) {
+  if (!documents) {
+    return `
+      <section class="doc-panel">
+        <p class="doc-empty">Không tải được tài liệu từ muasamcong. Thử lại sau hoặc mở link bên dưới.</p>
+      </section>
+    `;
+  }
+
+  const khlcnt = documents.khlcnt || {};
+  const hsmt = documents.hsmt || {};
+
+  const chapterHtml = (hsmt.chapters || [])
+    .map(
+      (chapter) => `
+        <div class="doc-subsection">
+          <h4>${escapeHtml(chapter.title)}</h4>
+          ${renderFileList(chapter.files, "Chưa có file trong mục này.")}
+        </div>
+      `,
+    )
+    .join("");
+
+  return `
+    <section class="doc-panel">
+      <div class="doc-panel__head">
+        <h3>KHLCNT · ${escapeHtml(khlcnt.planNo || documents.planNo || "—")}</h3>
+        ${
+          documents.planUrl
+            ? `<a class="btn btn--ghost" href="${escapeAttr(documents.planUrl)}" target="_blank" rel="noopener noreferrer">Mở KHLCNT</a>`
+            : ""
+        }
+      </div>
+      ${
+        khlcnt.planName
+          ? `<p class="doc-summary">${escapeHtml(khlcnt.planName)}</p>`
+          : ""
+      }
+      <div class="detail-grid detail-grid--compact">
+        <div class="detail-item"><span>Chủ đầu tư</span><strong>${escapeHtml(khlcnt.investorName || "—")}</strong></div>
+        <div class="detail-item"><span>Tổng mức đầu tư</span><strong>${escapeHtml(khlcnt.investTotalLabel || khlcnt.investTotal || "—")}</strong></div>
+        <div class="detail-item"><span>Ngày quyết định</span><strong>${escapeHtml(khlcnt.decisionDate ? formatDate(khlcnt.decisionDate) : "—")}</strong></div>
+      </div>
+      ${renderFileList(khlcnt.files, "Chưa lấy được file KHLCNT tự động. Dùng nút Mở KHLCNT để tải trên muasamcong.")}
+    </section>
+
+    <section class="doc-panel">
+      <div class="doc-panel__head">
+        <h3>Hồ sơ mời thầu (HSMT)</h3>
+        <div class="doc-panel__actions">
+          ${
+            hsmt.zipUrl
+              ? `<a class="btn btn--ghost" href="${escapeAttr(hsmt.zipUrl)}" target="_blank" rel="noopener noreferrer">Tải tất cả file</a>`
+              : ""
+          }
+        </div>
+      </div>
+      <div class="doc-subsection">
+        <h4>File đính kèm</h4>
+        ${renderFileList(hsmt.attachments, "Chưa lấy được file đính kèm tự động. Mở gói thầu trên muasamcong → tab Hồ sơ mời thầu.")}
+      </div>
+      <div class="doc-subsection">
+        <h4>Biểu mẫu webform</h4>
+        ${renderFileList(hsmt.webforms, "Chưa lấy được biểu mẫu webform tự động. Tải trên muasamcong → tab Hồ sơ mời thầu.")}
+      </div>
+      ${chapterHtml}
+    </section>
+  `;
+}
+
+function renderDetail(item, documents) {
   elements.detailContent.innerHTML = `
-    <p class="eyebrow">Chi tiết gói thầu</p>
-    <h2>${escapeHtml(item.bidName)}</h2>
+    <div class="dialog__header">
+      <p class="section-tag">Chi tiết gói thầu</p>
+      <h2>${escapeHtml(item.bidName)}</h2>
+    </div>
+    <div class="dialog__body">
     <div class="detail-grid">
       <div class="detail-item detail-item--full">
         <span>Trạng thái</span>
@@ -315,12 +415,38 @@ function renderDetail(item) {
       <div class="detail-item"><span>Mở thầu</span><strong>${escapeHtml(item.bidOpenDateLabel)}</strong></div>
       <div class="detail-item"><span>Thời điểm quét</span><strong>${escapeHtml(item.crawledAtLabel || "—")}</strong></div>
       <div class="detail-item detail-item--full"><span>Địa điểm</span><p>${escapeHtml(item.locations || "—")}</p></div>
-      <div class="detail-item detail-item--full"><span>Mã KHLCNT</span><p>${escapeHtml(item.planNo || "—")}</p></div>
+      <div class="detail-item detail-item--full">
+        <span>Mã KHLCNT</span>
+        <p>
+          ${escapeHtml(item.planNo || "—")}
+          ${
+            item.planUrl
+              ? ` · <a href="${escapeAttr(item.planUrl)}" target="_blank" rel="noopener noreferrer">Tra cứu KHLCNT</a>`
+              : ""
+          }
+        </p>
+      </div>
     </div>
+
+    <div id="documentsSection" class="documents-section">
+      ${
+        documents
+          ? renderDocumentsSection(documents)
+          : '<div class="doc-loading">Đang tải KHLCNT và HSMT từ muasamcong...</div>'
+      }
+    </div>
+
     <div class="detail-actions">
-      <a class="btn btn--primary" href="${escapeHtml(item.detailUrl)}" target="_blank" rel="noopener noreferrer">
+      <a class="btn btn--primary" href="${escapeAttr(item.detailUrl)}" target="_blank" rel="noopener noreferrer">
         Xem trên muasamcong
       </a>
+      ${
+        item.planUrl
+          ? `<a class="btn btn--ghost" href="${escapeAttr(item.planUrl)}" target="_blank" rel="noopener noreferrer">Mở KHLCNT</a>`
+          : ""
+      }
+    </div>
+    <p class="detail-hint">Link mở đúng trang trên muasamcong (portlet detail-v2 / tra cứu KHLCNT).</p>
     </div>
   `;
 
@@ -332,6 +458,10 @@ function renderDetail(item) {
   }
 
   elements.detailDialog.showModal();
+}
+
+async function loadTenderDocuments(id) {
+  return fetchJson(`/api/tenders/${encodeURIComponent(id)}/documents`);
 }
 
 async function updateWorkflowStatus(id, workflowStatus, selectEl) {
@@ -371,13 +501,38 @@ async function updateWorkflowStatus(id, workflowStatus, selectEl) {
 }
 
 async function openDetail(id) {
+  let item;
   if (state.viewMode === "live" && state.liveItems.has(id)) {
-    renderDetail(state.liveItems.get(id));
-    return;
+    item = state.liveItems.get(id);
+  } else {
+    item = await fetchJson(`/api/tenders/${encodeURIComponent(id)}`);
   }
 
-  const item = await fetchJson(`/api/tenders/${encodeURIComponent(id)}`);
-  renderDetail(item);
+  renderDetail(item, null);
+
+  try {
+    const documents = await loadTenderDocuments(item.id || id);
+    const documentsSection = elements.detailContent.querySelector("#documentsSection");
+    if (documentsSection) {
+      documentsSection.innerHTML = renderDocumentsSection(documents);
+    }
+
+    const detailLink = elements.detailContent.querySelector(
+      ".detail-actions a.btn--primary",
+    );
+    if (detailLink && documents.detailUrl) {
+      detailLink.href = documents.detailUrl;
+    }
+  } catch (error) {
+    const documentsSection = elements.detailContent.querySelector("#documentsSection");
+    if (documentsSection) {
+      documentsSection.innerHTML = `
+        <section class="doc-panel">
+          <p class="doc-empty">${escapeHtml(error.message || "Không tải được tài liệu từ muasamcong.")}</p>
+        </section>
+      `;
+    }
+  }
 }
 
 function escapeHtml(value) {
@@ -387,6 +542,10 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function escapeAttr(value) {
+  return String(value ?? "").replace(/"/g, "%22");
 }
 
 function applySortValue(value) {
@@ -412,15 +571,30 @@ elements.statTrackedCard.addEventListener("click", (event) => {
   navigateToWorkflow("theo_doi").catch(handleError);
 });
 
+function runSearch() {
+  state.q = elements.searchInput.value.trim();
+  state.page = 1;
+  state.viewMode = "saved";
+  loadSavedTenders().catch(handleError);
+}
+
 elements.searchInput.addEventListener(
   "input",
-  debounce((event) => {
-    state.q = event.target.value.trim();
-    state.page = 1;
-    state.viewMode = "saved";
-    loadSavedTenders().catch(handleError);
+  debounce(() => {
+    runSearch();
   }, 300),
 );
+
+elements.searchInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    runSearch();
+  }
+});
+
+elements.searchSubmitBtn.addEventListener("click", () => {
+  runSearch();
+});
 
 elements.provinceFilter.addEventListener("change", (event) => {
   state.provCode = event.target.value;

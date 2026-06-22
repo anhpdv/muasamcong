@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { tenderKey } from "./normalize.js";
+import { buildDetailUrl, buildPlanUrl, tenderKey } from "./normalize.js";
 import {
   enrichWithWorkflowStatus,
   getWorkflowStatusLabel,
@@ -140,10 +140,11 @@ export function toPublicTender(tender) {
     provCode: tender.provCode || "",
     provName: tender.provName || "",
     planNo: tender.planNo,
+    planUrl: buildPlanUrl(tender.raw || {}, { planNo: tender.planNo, planType: tender.planType }),
     bidPrice: formatMoney(bidPrice),
     crawledAt: tender.crawledAt,
     crawledAtLabel: formatDate(tender.crawledAt),
-    detailUrl: tender.detailUrl,
+    detailUrl: buildDetailUrl(tender.raw || tender),
     tenderKey: tender.tenderKey || tenderKey(tender),
     workflowStatus: tender.workflowStatus || "",
     workflowStatusLabel: getWorkflowStatusLabel(tender.workflowStatus),

@@ -4,56 +4,65 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Mua sắm công — Theo dõi gói thầu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="/logo-hainam.png" type="image/png" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="app">
-      <header class="header">
-        <div class="header__brand">
-          <div class="header__logo">MS</div>
-          <div>
-            <p class="eyebrow">Hệ thống theo dõi tự động</p>
+    <div class="msc-topbar">
+      <div class="msc-topbar__inner">
+        <span class="msc-topbar__tag">Hệ thống theo dõi nội bộ</span>
+        <a
+          class="msc-topbar__link"
+          href="https://muasamcong.mpi.gov.vn/web/guest/home"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Cổng thông tin đấu thầu quốc gia
+        </a>
+      </div>
+    </div>
+
+    <header class="site-header">
+      <div class="site-header__inner">
+        <div class="site-header__brand">
+          <a class="site-header__logo" href="/" aria-label="HAINAM GLOBAL">
+            <img src="/logo-hainam.png" alt="HAINAM GLOBAL" width="180" height="48" />
+          </a>
+          <div class="site-header__titles">
+            <p class="site-header__org">Cổng thông tin đấu thầu</p>
             <h1>AI Mua sắm công</h1>
-            <p class="subtitle">Gói thầu mới từ muasamcong.mpi.gov.vn</p>
+            <p class="site-header__desc">Theo dõi TBMT từ muasamcong.mpi.gov.vn</p>
           </div>
         </div>
-        <div class="header__actions">
-          <button id="refreshBtn" class="btn btn--primary" type="button">
-            Quét ngay
-          </button>
+        <button id="refreshBtn" class="btn btn--primary" type="button">
+          Quét ngay
+        </button>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="search-hero">
+        <div class="search-hero__head">
+          <h2>Tìm kiếm gói thầu</h2>
+          <p>Tra cứu theo mã TBMT, tên gói, chủ đầu tư hoặc địa điểm</p>
         </div>
-      </header>
-
-      <section class="stats" id="stats">
-        <a class="stat-card stat-card--link" href="#/luu" data-workflow="luu" id="statSavedCard">
-          <span class="stat-card__label">Lưu</span>
-          <strong class="stat-card__value" id="statSaved">—</strong>
-          <span class="stat-card__hint">Xem gói đánh dấu Lưu</span>
-        </a>
-        <a class="stat-card stat-card--link" href="#/theo-doi" data-workflow="theo_doi" id="statTrackedCard">
-          <span class="stat-card__label">Theo dõi</span>
-          <strong class="stat-card__value" id="statTracked">—</strong>
-          <span class="stat-card__hint">Xem gói đang theo dõi</span>
-        </a>
-        <article class="stat-card">
-          <span class="stat-card__label">Lần quét gần nhất</span>
-          <strong class="stat-card__value stat-card__value--small" id="statLastCheck">—</strong>
-        </article>
-        <article class="stat-card">
-          <span class="stat-card__label">TBMT mới nhất trên web</span>
-          <strong class="stat-card__value stat-card__value--small" id="statLastPublic">—</strong>
-        </article>
-      </section>
-
-      <section class="toolbar">
-        <div class="search-box">
+        <div class="search-hero__bar">
           <input
             id="searchInput"
             type="search"
-            placeholder="Tìm theo mã TBMT, tên gói, chủ đầu tư, địa điểm..."
+            placeholder="Nhập từ khóa (ví dụ: IB2600277918 hoặc tên gói thầu)..."
           />
+          <button class="search-hero__submit" type="button" id="searchSubmitBtn">
+            Tìm kiếm
+          </button>
         </div>
-        <div class="toolbar__filters">
+        <div class="search-hero__filters">
           <select id="provinceFilter" aria-label="Lọc tỉnh thành">
             <option value="">Tất cả tỉnh/thành</option>
           </select>
@@ -73,17 +82,38 @@
         </div>
       </section>
 
+      <section class="stats" id="stats">
+        <a class="stat-card stat-card--link" href="#/luu" data-workflow="luu" id="statSavedCard">
+          <span class="stat-card__label">Lưu</span>
+          <strong class="stat-card__value" id="statSaved">—</strong>
+          <span class="stat-card__hint">Gói đánh dấu Lưu</span>
+        </a>
+        <a class="stat-card stat-card--link" href="#/theo-doi" data-workflow="theo_doi" id="statTrackedCard">
+          <span class="stat-card__label">Theo dõi</span>
+          <strong class="stat-card__value" id="statTracked">—</strong>
+          <span class="stat-card__hint">Gói đang theo dõi</span>
+        </a>
+        <article class="stat-card">
+          <span class="stat-card__label">Lần quét gần nhất</span>
+          <strong class="stat-card__value stat-card__value--small" id="statLastCheck">—</strong>
+        </article>
+        <article class="stat-card">
+          <span class="stat-card__label">TBMT mới nhất</span>
+          <strong class="stat-card__value stat-card__value--small" id="statLastPublic">—</strong>
+        </article>
+      </section>
+
       <section class="panel">
         <div class="panel__head">
           <div>
-            <h2>Danh sách gói thầu</h2>
+            <h2 class="panel__title">Danh sách gói thầu</h2>
             <p id="resultSummary">Đang tải...</p>
           </div>
           <span id="sourceBadge" class="source-badge source-badge--saved">Dữ liệu đã lưu</span>
         </div>
 
         <div class="table-wrap">
-          <table>
+          <table class="data-table">
             <thead>
               <tr>
                 <th>Mã TBMT</th>
@@ -107,7 +137,17 @@
 
         <div class="pagination" id="pagination"></div>
       </section>
-    </div>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Dữ liệu nguồn từ
+        <a href="https://muasamcong.mpi.gov.vn" target="_blank" rel="noopener noreferrer"
+          >muasamcong.mpi.gov.vn</a
+        >
+        · Công cụ hỗ trợ theo dõi nội bộ
+      </p>
+    </footer>
 
     <dialog id="detailDialog" class="dialog">
       <div class="dialog__content">

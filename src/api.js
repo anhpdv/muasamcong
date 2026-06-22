@@ -37,8 +37,10 @@ const DEFAULT_HEADERS = {
   Accept: "application/json",
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Referer: "https://muasamcong.mpi.gov.vn/web/guest/home",
+  Referer: "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection",
 };
+
+const PORTAL_SERVICE_PREFIX = "/o/egp-portal-home/services";
 
 export function buildSearchPayload({
   pageNumber = 0,
@@ -132,11 +134,12 @@ export function buildSearchPayload({
   ];
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, { allowHtml = false } = {}) {
   const response = await fetch(url, {
     method: "POST",
     headers: DEFAULT_HEADERS,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(60000),
   });
 
   const text = await response.text();
@@ -144,11 +147,59 @@ async function postJson(url, body) {
     throw new Error(`API lỗi ${response.status}: ${text.slice(0, 200)}`);
   }
 
+  if (text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
+    if (allowHtml) {
+      return null;
+    }
+    throw new Error("Phản hồi HTML thay vì JSON");
+  }
+
   try {
     return JSON.parse(text);
   } catch {
     throw new Error(`Phản hồi không phải JSON: ${text.slice(0, 200)}`);
   }
+}
+
+export async function postPortalService(config, servicePath, body, options = {}) {
+  const url = `${config.baseUrl}${PORTAL_SERVICE_PREFIX}/${servicePath}`;
+  return postJson(url, body, options);
+}
+
+export async function searchByIndex(
+  config,
+  {
+    index,
+    keyword,
+    matchFields = [],
+    filters = [],
+    pageNumber = 0,
+    pageSize = 5,
+    sortBy = "publicDate",
+    sortType = "DESC",
+  } = {},
+) {
+  const url = `${config.baseUrl}${config.searchEndpoint}`;
+  const payload = [
+    {
+      pageSize,
+      pageNumber,
+      sortBy,
+      sortType,
+      query: [
+        {
+          index,
+          keyWord: keyword,
+          matchType: "all-1",
+          matchFields: matchFields.length ? matchFields : [index.includes("plan") ? "planNo" : "notifyNo"],
+          filters,
+        },
+      ],
+    },
+  ];
+
+  const data = await postJson(url, payload);
+  return data?.page?.content || [];
 }
 
 export async function searchTenders(config, options = {}) {
