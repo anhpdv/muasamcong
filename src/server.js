@@ -16,6 +16,12 @@ import { maybeRunDueScans } from "./scheduledScan.js";
 import { scanTenders } from "./scan.js";
 import { fetchTenderDocuments } from "./tenderDocuments.js";
 import {
+  buildSessionCookie,
+  clearSessionCookie,
+  createAuthStore,
+  parseCookies,
+} from "./auth.js";
+import {
   setWorkflowStatus,
   WORKFLOW_STATUS_OPTIONS,
 } from "./tenderStatus.js";
@@ -31,8 +37,64 @@ const MIME_TYPES = {
   ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
+  ".png": "image/png",
 };
+
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/login.html",
+  "/login.css",
+  "/login.js",
+  "/logo-hainam.png",
+]);
+
+function redirect(response, location) {
+  response.writeHead(302, { Location: location });
+  response.end();
+}
+
+function resolveAuthPaths(paths) {
+  return {
+    ...paths,
+    usersPath: path.join(paths.dataDir, "users.json"),
+    sessionsPath: path.join(paths.dataDir, "sessions.json"),
+  };
+}
+
+async function getRequestUser(request, auth) {
+  const cookies = parseCookies(request.headers.cookie);
+  return auth.getSessionUser(cookies[auth.SESSION_COOKIE]);
+}
+
+async function serveFile(response, absolutePath) {
+  const content = await fs.readFile(absolutePath);
+  const ext = path.extname(absolutePath);
+  response.writeHead(200, {
+    "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
+    "Cache-Control": ext === ".html" ? "no-store" : "public, max-age=300",
+  });
+  response.end(content);
+}
+
+async function serveStaticFile(response, filePath) {
+  const normalized = path.normalize(filePath).replace(/^(\.\.[/\\])+/, "");
+  const absolutePath = path.join(publicDir, normalized);
+
+  if (!absolutePath.startsWith(publicDir)) {
+    sendText(response, 403, "Forbidden");
+    return;
+  }
+
+  try {
+    await serveFile(response, absolutePath);
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      sendText(response, 404, "Not found");
+      return;
+    }
+    throw error;
+  }
+}
 
 async function loadConfig() {
   const raw = await fs.readFile(path.join(rootDir, "config.json"), "utf8");
@@ -66,31 +128,51 @@ async function readBody(request) {
   return JSON.parse(text);
 }
 
-async function serveStatic(request, response) {
+async function serveStatic(request, response, user) {
   const url = new URL(request.url, "http://localhost");
-  let filePath = url.pathname === "/" ? "/index.html" : url.pathname;
-  filePath = path.normalize(filePath).replace(/^(\.\.[/\\])+/, "");
-  const absolutePath = path.join(publicDir, filePath);
+  const pathname = url.pathname;
 
-  if (!absolutePath.startsWith(publicDir)) {
-    sendText(response, 403, "Forbidden");
+  if (PUBLIC_PATHS.has(pathname)) {
+    if (pathname === "/") {
+      if (user) {
+        redirect(response, "/app");
+        return;
+      }
+      await serveStaticFile(response, "/login.html");
+      return;
+    }
+    await serveStaticFile(response, pathname);
     return;
   }
 
-  try {
-    const content = await fs.readFile(absolutePath);
-    const ext = path.extname(absolutePath);
-    response.writeHead(200, {
-      "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
-    });
-    response.end(content);
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      sendText(response, 404, "Not found");
+  if (!user) {
+    if (pathname.startsWith("/api/")) {
+      sendJson(response, 401, { error: "Yêu cầu đăng nhập" });
       return;
     }
-    throw error;
+    redirect(response, "/");
+    return;
   }
+
+  if (pathname === "/app" || pathname === "/index.html") {
+    await serveStaticFile(response, "/index.html");
+    return;
+  }
+
+  if (pathname === "/admin" || pathname === "/admin.html") {
+    if (user.role !== "admin") {
+      redirect(response, "/app");
+      return;
+    }
+    await serveStaticFile(response, "/admin.html");
+    return;
+  }
+
+  let filePath = pathname;
+  if (filePath === "/") {
+    filePath = "/index.html";
+  }
+  await serveStaticFile(response, filePath);
 }
 
 function countByWorkflowStatus(catalog) {
@@ -106,13 +188,101 @@ function countByWorkflowStatus(catalog) {
   };
 }
 
-function createServer(config, paths) {
+function createServer(config, paths, auth) {
   let scanPromise = null;
+  const sessionTtlSeconds = (config.auth?.sessionTtlHours || 168) * 60 * 60;
 
   return http.createServer(async (request, response) => {
     const url = new URL(request.url, "http://localhost");
+    const user = await getRequestUser(request, auth);
 
     try {
+      if (url.pathname === "/api/auth/login" && request.method === "POST") {
+        const body = await readBody(request);
+        const account = await auth.authenticate(body.username, body.password);
+        if (!account) {
+          sendJson(response, 401, { error: "Sai tài khoản hoặc mật khẩu" });
+          return;
+        }
+
+        const session = await auth.createSession(account.id);
+        response.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Set-Cookie": buildSessionCookie(session.token, sessionTtlSeconds),
+        });
+        response.end(JSON.stringify({ ok: true, user: account }));
+        return;
+      }
+
+      if (url.pathname === "/api/auth/logout" && request.method === "POST") {
+        const cookies = parseCookies(request.headers.cookie);
+        await auth.destroySession(cookies[auth.SESSION_COOKIE]);
+        response.writeHead(200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Set-Cookie": clearSessionCookie(),
+        });
+        response.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (url.pathname === "/api/auth/me" && request.method === "GET") {
+        if (!user) {
+          sendJson(response, 401, { error: "Chưa đăng nhập" });
+          return;
+        }
+        sendJson(response, 200, { user });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/admin/")) {
+        if (!user) {
+          sendJson(response, 401, { error: "Yêu cầu đăng nhập" });
+          return;
+        }
+        if (user.role !== "admin") {
+          sendJson(response, 403, { error: "Không có quyền quản trị" });
+          return;
+        }
+
+        if (url.pathname === "/api/admin/users" && request.method === "GET") {
+          const users = await auth.listUsers();
+          sendJson(response, 200, { users });
+          return;
+        }
+
+        if (url.pathname === "/api/admin/users" && request.method === "POST") {
+          const body = await readBody(request);
+          const created = await auth.createUser(body);
+          sendJson(response, 201, { ok: true, user: created });
+          return;
+        }
+
+        const userMatch = url.pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
+        if (userMatch && request.method === "PATCH") {
+          const id = decodeURIComponent(userMatch[1]);
+          const body = await readBody(request);
+          const updated = await auth.updateUser(id, body);
+          sendJson(response, 200, { ok: true, user: updated });
+          return;
+        }
+
+        if (userMatch && request.method === "DELETE") {
+          const id = decodeURIComponent(userMatch[1]);
+          await auth.deleteUser(id, user.id);
+          sendJson(response, 200, { ok: true });
+          return;
+        }
+
+        sendJson(response, 404, { error: "Not found" });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/") && !user) {
+        sendJson(response, 401, { error: "Yêu cầu đăng nhập" });
+        return;
+      }
+
       if (url.pathname === "/api/provinces" && request.method === "GET") {
         const provinces = await fetchProvinces(config);
         sendJson(response, 200, { provinces });
@@ -284,7 +454,7 @@ function createServer(config, paths) {
       }
 
       if (request.method === "GET") {
-        await serveStatic(request, response);
+        await serveStatic(request, response, user);
         return;
       }
 
@@ -297,12 +467,20 @@ function createServer(config, paths) {
 }
 
 const config = await loadConfig();
-const paths = resolveDataPaths(config, rootDir);
+const paths = resolveAuthPaths(resolveDataPaths(config, rootDir));
+const auth = createAuthStore(paths, config);
+const bootstrap = await auth.ensureBootstrapAdmin();
 const port = Number(process.env.PORT || config.webPort || 3000);
-const server = createServer(config, paths);
+const server = createServer(config, paths, auth);
 
 server.listen(port, () => {
   console.log(`Giao diện AI Mua sắm công: http://localhost:${port}`);
+  if (bootstrap) {
+    console.log(
+      `[auth] Tạo tài khoản admin mặc định: ${bootstrap.username} / ${bootstrap.password}`,
+    );
+    console.log("[auth] Hãy đổi mật khẩu ngay sau khi đăng nhập.");
+  }
 
   if (config.schedule?.enabled) {
     const intervalMs = (config.schedule.checkIntervalSeconds || 30) * 1000;

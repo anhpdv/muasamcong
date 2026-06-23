@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quản trị tài khoản — AI Mua sắm công</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" href="/logo-hainam.png" type="image/png" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body>
+    <div class="msc-topbar">
+      <div class="msc-topbar__inner">
+        <span class="msc-topbar__tag">Quản trị hệ thống</span>
+        <div class="msc-topbar__actions">
+          <a class="msc-topbar__link" href="/app">← Về ứng dụng</a>
+          <button id="logoutBtn" class="btn btn--ghost btn--sm" type="button">Đăng xuất</button>
+        </div>
+      </div>
+    </div>
+
+    <header class="site-header">
+      <div class="site-header__inner">
+        <div class="site-header__brand">
+          <img src="/logo-hainam.png" alt="HAINAM GLOBAL" class="site-header__logo-img" />
+          <div class="site-header__titles">
+            <p class="site-header__org">Quản trị</p>
+            <h1>Quản lý tài khoản</h1>
+            <p class="site-header__desc">Tạo, khóa và đặt lại mật khẩu người dùng</p>
+          </div>
+        </div>
+        <div class="user-chip" id="adminUserChip">—</div>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="panel admin-panel">
+        <div class="panel__head">
+          <div>
+            <h2 class="panel__title">Danh sách tài khoản</h2>
+            <p id="userSummary">Đang tải...</p>
+          </div>
+        </div>
+
+        <div class="admin-create">
+          <h3>Tạo tài khoản mới</h3>
+          <form id="createUserForm" class="admin-form">
+            <input name="username" type="text" placeholder="Tên đăng nhập" required minlength="3" />
+            <input name="password" type="password" placeholder="Mật khẩu (tối thiểu 6 ký tự)" required minlength="6" />
+            <select name="role" aria-label="Vai trò">
+              <option value="user">Người dùng</option>
+              <option value="admin">Quản trị</option>
+            </select>
+            <button class="btn btn--primary" type="submit">Tạo tài khoản</button>
+          </form>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Tài khoản</th>
+                <th>Vai trò</th>
+                <th>Trạng thái</th>
+                <th>Ngày tạo</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="usersTableBody">
+              <tr><td colspan="5" class="empty">Đang tải...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="/admin.js" type="module"></script>
+  </body>
+</html>

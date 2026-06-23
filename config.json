@@ -27,5 +27,11 @@
     },
     "pageSize": 10,
     "maxPages": 5
+  },
+  "auth": {
+    "sessionTtlHours": 168,
+    "bootstrap": {
+      "username": "admin"
+    }
   }
 }

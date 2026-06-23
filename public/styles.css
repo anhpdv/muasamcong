@@ -139,6 +139,47 @@ p {
   font-size: 13px;
 }
 
+.msc-topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.user-chip {
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f5d9b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.site-header__logo-img {
+  height: 48px;
+  width: auto;
+  max-width: 200px;
+  object-fit: contain;
+}
+
+.btn--sm {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.msc-topbar .btn--ghost {
+  background: transparent;
+  color: #f5d9b8;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.msc-topbar .btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: var(--msc-gold);
+}
+
 /* Page layout */
 .page {
   width: min(1200px, calc(100% - 32px));

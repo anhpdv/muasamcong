@@ -44,6 +44,9 @@ const elements = {
   detailContent: document.getElementById("detailContent"),
   closeDialogBtn: document.getElementById("closeDialogBtn"),
   toast: document.getElementById("toast"),
+  logoutBtn: document.getElementById("logoutBtn"),
+  userChip: document.getElementById("userChip"),
+  adminLink: document.getElementById("adminLink"),
 };
 
 function formatDate(value) {
@@ -71,13 +74,31 @@ function showToast(message) {
   }, 3200);
 }
 
-async function fetchJson(url, options) {
-  const response = await fetch(url, options);
-  const data = await response.json();
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    window.location.href = "/";
+    throw new Error("Phiên đăng nhập đã hết hạn");
+  }
   if (!response.ok) {
     throw new Error(data.error || "Yêu cầu thất bại");
   }
   return data;
+}
+
+async function ensureAuthenticated() {
+  const me = await fetchJson("/api/auth/me");
+  elements.userChip.textContent = `${me.user.username} (${me.user.role})`;
+  elements.adminLink.hidden = me.user.role !== "admin";
+  return me.user;
 }
 
 function setSourceBadge(mode) {
@@ -645,6 +666,11 @@ elements.closeDialogBtn.addEventListener("click", () => {
   elements.detailDialog.close();
 });
 
+elements.logoutBtn.addEventListener("click", async () => {
+  await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+  window.location.href = "/";
+});
+
 elements.refreshBtn.addEventListener("click", async () => {
   elements.refreshBtn.disabled = true;
   elements.refreshBtn.textContent = "Đang quét API...";
@@ -680,4 +706,6 @@ function handleError(error) {
 }
 
 applyRouteFromHash();
-Promise.all([loadProvinces(), loadStats(), loadSavedTenders()]).catch(handleError);
+ensureAuthenticated()
+  .then(() => Promise.all([loadProvinces(), loadStats(), loadSavedTenders()]))
+  .catch(handleError);

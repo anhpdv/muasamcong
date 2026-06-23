@@ -17,22 +17,27 @@
     <div class="msc-topbar">
       <div class="msc-topbar__inner">
         <span class="msc-topbar__tag">Hệ thống theo dõi nội bộ</span>
-        <a
-          class="msc-topbar__link"
-          href="https://muasamcong.mpi.gov.vn/web/guest/home"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Cổng thông tin đấu thầu quốc gia
-        </a>
+        <div class="msc-topbar__actions">
+          <a
+            class="msc-topbar__link"
+            href="https://muasamcong.mpi.gov.vn/web/guest/home"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Cổng thông tin đấu thầu quốc gia
+          </a>
+          <a class="msc-topbar__link" href="/admin" id="adminLink" hidden>Quản trị</a>
+          <span class="user-chip" id="userChip">—</span>
+          <button id="logoutBtn" class="btn btn--ghost btn--sm" type="button">Đăng xuất</button>
+        </div>
       </div>
     </div>
 
     <header class="site-header">
       <div class="site-header__inner">
         <div class="site-header__brand">
-          <a class="site-header__logo" href="/" aria-label="HAINAM GLOBAL">
-            <img src="/logo-hainam.png" alt="HAINAM GLOBAL" width="180" height="48" />
+          <a class="site-header__logo" href="/app" aria-label="HAINAM GLOBAL">
+            <img src="/logo-hainam.png" alt="HAINAM GLOBAL" class="site-header__logo-img" width="180" height="48" />
           </a>
           <div class="site-header__titles">
             <p class="site-header__org">Cổng thông tin đấu thầu</p>
