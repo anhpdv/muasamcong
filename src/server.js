@@ -12,7 +12,7 @@ import {
   toPublicTender,
 } from "./loadTenders.js";
 import { runMonitor } from "./monitor.js";
-import { maybeRunDueScans } from "./scheduledScan.js";
+import { maybeRunDueScans, runScheduledScan } from "./scheduledScan.js";
 import { scanTenders } from "./scan.js";
 import { fetchTenderDocuments } from "./tenderDocuments.js";
 import {
@@ -414,9 +414,26 @@ function createServer(config, paths, auth) {
           pageSize: Number(body.pageSize) || config.pageSize || 10,
           keyword: body.keyword || body.q || "",
           investField: body.investField || body.field || "",
+          investFields: Array.isArray(body.investFields) ? body.investFields : [],
           provCode: body.provCode || "",
+          provCodes: Array.isArray(body.provCodes) ? body.provCodes : [],
+          fetchAll: body.fetchAll === true || body.fetchAll === "true",
+          maxPages: Number(body.maxPages) || 50,
+          publicDateToday: Boolean(body.publicDateToday),
+          publicDateFrom: body.publicDateFrom || "",
+          publicDateTo: body.publicDateTo || "",
           saveNew: body.saveNew !== false,
         };
+
+        if (!scanOptions.provCode && !scanOptions.investField && !scanOptions.keyword
+          && !(scanOptions.provCodes || []).length
+          && !(scanOptions.investFields || []).length
+          && scanOptions.fetchAll) {
+          sendJson(response, 400, {
+            error: "Chọn ít nhất tỉnh/thành hoặc lĩnh vực trước khi quét theo bộ lọc",
+          });
+          return;
+        }
 
         if (!scanPromise) {
           scanPromise = scanTenders(config, scanOptions).finally(() => {
@@ -439,6 +456,26 @@ function createServer(config, paths, auth) {
           ...result,
           items: page.items,
           pagination: page.pagination,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/scan/default" && request.method === "POST") {
+        if (!scanPromise) {
+          scanPromise = runScheduledScan(config, rootDir).finally(() => {
+            scanPromise = null;
+          });
+        }
+
+        const result = await scanPromise;
+        sendJson(response, 200, {
+          ok: true,
+          source: "schedule",
+          message:
+            result.newCount > 0
+              ? `Quét mặc định: ${result.checked} gói, lưu mới ${result.newCount} gói`
+              : `Quét mặc định: ${result.checked} gói, không có gói mới`,
+          ...result,
         });
         return;
       }

@@ -23,6 +23,15 @@ const state = {
   liveItems: new Map(),
 };
 
+const scanState = {
+  q: "",
+  field: "",
+  provCode: "",
+  timePreset: "today",
+  dateFrom: "",
+  dateTo: "",
+};
+
 const elements = {
   statSaved: document.getElementById("statSaved"),
   statTracked: document.getElementById("statTracked"),
@@ -30,16 +39,21 @@ const elements = {
   statTrackedCard: document.getElementById("statTrackedCard"),
   statLastCheck: document.getElementById("statLastCheck"),
   statLastPublic: document.getElementById("statLastPublic"),
-  searchInput: document.getElementById("searchInput"),
-  provinceFilter: document.getElementById("provinceFilter"),
-  fieldFilter: document.getElementById("fieldFilter"),
-  sortSelect: document.getElementById("sortSelect"),
+  scanProvince: document.getElementById("scanProvince"),
+  scanField: document.getElementById("scanField"),
+  scanKeyword: document.getElementById("scanKeyword"),
+  scanTimePreset: document.getElementById("scanTimePreset"),
+  scanDateRow: document.getElementById("scanDateRow"),
+  scanDateFrom: document.getElementById("scanDateFrom"),
+  scanDateTo: document.getElementById("scanDateTo"),
+  listSearchInput: document.getElementById("listSearchInput"),
+  listSortSelect: document.getElementById("listSortSelect"),
   tenderTableBody: document.getElementById("tenderTableBody"),
   resultSummary: document.getElementById("resultSummary"),
   sourceBadge: document.getElementById("sourceBadge"),
   pagination: document.getElementById("pagination"),
   refreshBtn: document.getElementById("refreshBtn"),
-  searchSubmitBtn: document.getElementById("searchSubmitBtn"),
+  filterScanBtn: document.getElementById("filterScanBtn"),
   detailDialog: document.getElementById("detailDialog"),
   detailContent: document.getElementById("detailContent"),
   closeDialogBtn: document.getElementById("closeDialogBtn"),
@@ -48,6 +62,77 @@ const elements = {
   userChip: document.getElementById("userChip"),
   adminLink: document.getElementById("adminLink"),
 };
+
+function vietnamTodayKey(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+function shiftVietnamDay(days) {
+  const base = new Date(`${vietnamTodayKey()}T12:00:00+07:00`);
+  base.setDate(base.getDate() + days);
+  return vietnamTodayKey(base);
+}
+
+function toVietnamDayRange(fromKey, toKey) {
+  return {
+    publicDateFrom: new Date(`${fromKey}T00:00:00+07:00`).toISOString(),
+    publicDateTo: new Date(`${toKey}T23:59:59.999+07:00`).toISOString(),
+  };
+}
+
+function resolveScanDateFilters() {
+  const preset = elements.scanTimePreset.value;
+  const today = vietnamTodayKey();
+
+  if (preset === "today") {
+    return { publicDateToday: true, publicDateFrom: "", publicDateTo: "" };
+  }
+
+  if (preset === "7d") {
+    return {
+      publicDateToday: false,
+      ...toVietnamDayRange(shiftVietnamDay(-6), today),
+    };
+  }
+
+  if (preset === "30d") {
+    return {
+      publicDateToday: false,
+      ...toVietnamDayRange(shiftVietnamDay(-29), today),
+    };
+  }
+
+  if (preset === "custom") {
+    const from = elements.scanDateFrom.value;
+    const to = elements.scanDateTo.value;
+    if (!from || !to) {
+      throw new Error("Chọn đầy đủ Từ ngày và Đến ngày");
+    }
+    if (from > to) {
+      throw new Error("Từ ngày không được lớn hơn Đến ngày");
+    }
+    return {
+      publicDateToday: false,
+      ...toVietnamDayRange(from, to),
+    };
+  }
+
+  return { publicDateToday: false, publicDateFrom: "", publicDateTo: "" };
+}
+
+function syncScanDateRow() {
+  const isCustom = elements.scanTimePreset.value === "custom";
+  elements.scanDateRow.hidden = !isCustom;
+  if (isCustom && !elements.scanDateFrom.value && !elements.scanDateTo.value) {
+    elements.scanDateTo.value = vietnamTodayKey();
+    elements.scanDateFrom.value = shiftVietnamDay(-6);
+  }
+}
 
 function formatDate(value) {
   if (!value) {
@@ -96,7 +181,8 @@ async function fetchJson(url, options = {}) {
 
 async function ensureAuthenticated() {
   const me = await fetchJson("/api/auth/me");
-  elements.userChip.textContent = `${me.user.username} (${me.user.role})`;
+  elements.userChip.textContent = me.user.username;
+  elements.userChip.title = me.user.role === "admin" ? "Quản trị viên" : "Người dùng";
   elements.adminLink.hidden = me.user.role !== "admin";
   return me.user;
 }
@@ -190,8 +276,8 @@ function renderStatusSelect(item) {
 
 async function loadProvinces() {
   const data = await fetchJson("/api/provinces");
-  elements.provinceFilter.innerHTML = `
-    <option value="">Tất cả tỉnh/thành</option>
+  elements.scanProvince.innerHTML = `
+    <option value="">Chọn tỉnh/thành</option>
     ${data.provinces
       .map(
         (province) =>
@@ -233,29 +319,52 @@ async function loadSavedTenders() {
 }
 
 async function scanTendersFromApi() {
+  scanState.provCode = elements.scanProvince.value;
+  scanState.field = elements.scanField.value;
+  scanState.q = elements.scanKeyword.value.trim();
+  scanState.timePreset = elements.scanTimePreset.value;
+
+  if (!scanState.provCode && !scanState.field && !scanState.q) {
+    throw new Error("Chọn tỉnh/thành hoặc lĩnh vực trước khi quét");
+  }
+
+  const dateFilters = resolveScanDateFilters();
+
   const data = await fetchJson("/api/scan", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      q: state.q,
-      keyword: state.q,
-      field: state.field,
-      investField: state.field,
-      provCode: state.provCode,
-      workflowStatus: state.workflowStatus,
-      page: state.page,
-      limit: state.limit,
+      q: scanState.q,
+      keyword: scanState.q,
+      field: scanState.field,
+      investField: scanState.field,
+      provCode: scanState.provCode,
+      fetchAll: true,
+      maxPages: 50,
+      saveNew: true,
+      ...dateFilters,
     }),
   });
 
-  state.viewMode = "live";
-  state.liveItems = new Map(data.items.map((item) => [item.id, item]));
-  setSourceBadge("live");
-  renderTable(data.items);
-  renderPagination(data.pagination);
-  elements.resultSummary.textContent = `API trả về ${data.checked} gói · Tổng khớp bộ lọc: ${data.totalElements}`;
+  state.page = 1;
+  state.viewMode = "saved";
+  setSourceBadge("saved");
   showToast(data.message);
-  await loadStats();
+  await Promise.all([loadStats(), loadSavedTenders()]);
+}
+
+async function scanDefaultSchedule() {
+  const data = await fetchJson("/api/scan/default", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+
+  state.page = 1;
+  state.viewMode = "saved";
+  setSourceBadge("saved");
+  showToast(data.message);
+  await Promise.all([loadStats(), loadSavedTenders()]);
 }
 
 function renderTable(items) {
@@ -263,7 +372,7 @@ function renderTable(items) {
     elements.tenderTableBody.innerHTML = `
       <tr>
         <td colspan="9" class="empty">
-          Không có gói thầu phù hợp. Thử đổi bộ lọc hoặc bấm <strong>Quét ngay</strong>.
+          Không có gói thầu phù hợp. Thử lọc danh sách hoặc quét thêm từ Mua sắm công.
         </td>
       </tr>
     `;
@@ -576,9 +685,6 @@ function applySortValue(value) {
 }
 
 function reloadCurrentView() {
-  if (state.viewMode === "live") {
-    return scanTendersFromApi();
-  }
   return loadSavedTenders();
 }
 
@@ -592,46 +698,28 @@ elements.statTrackedCard.addEventListener("click", (event) => {
   navigateToWorkflow("theo_doi").catch(handleError);
 });
 
-function runSearch() {
-  state.q = elements.searchInput.value.trim();
+function runListSearch() {
+  state.q = elements.listSearchInput.value.trim();
   state.page = 1;
   state.viewMode = "saved";
   loadSavedTenders().catch(handleError);
 }
 
-elements.searchInput.addEventListener(
+elements.listSearchInput.addEventListener(
   "input",
   debounce(() => {
-    runSearch();
+    runListSearch();
   }, 300),
 );
 
-elements.searchInput.addEventListener("keydown", (event) => {
+elements.listSearchInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    runSearch();
+    runListSearch();
   }
 });
 
-elements.searchSubmitBtn.addEventListener("click", () => {
-  runSearch();
-});
-
-elements.provinceFilter.addEventListener("change", (event) => {
-  state.provCode = event.target.value;
-  state.page = 1;
-  state.viewMode = "saved";
-  loadSavedTenders().catch(handleError);
-});
-
-elements.fieldFilter.addEventListener("change", (event) => {
-  state.field = event.target.value;
-  state.page = 1;
-  state.viewMode = "saved";
-  loadSavedTenders().catch(handleError);
-});
-
-elements.sortSelect.addEventListener("change", (event) => {
+elements.listSortSelect.addEventListener("change", (event) => {
   applySortValue(event.target.value);
   state.page = 1;
   reloadCurrentView().catch(handleError);
@@ -673,16 +761,33 @@ elements.logoutBtn.addEventListener("click", async () => {
 
 elements.refreshBtn.addEventListener("click", async () => {
   elements.refreshBtn.disabled = true;
-  elements.refreshBtn.textContent = "Đang quét API...";
+  elements.refreshBtn.textContent = "Đang quét...";
 
   try {
-    state.page = 1;
-    await scanTendersFromApi();
+    await scanDefaultSchedule();
   } catch (error) {
     handleError(error);
   } finally {
     elements.refreshBtn.disabled = false;
-    elements.refreshBtn.textContent = "Quét ngay";
+    elements.refreshBtn.textContent = "Quét mặc định";
+  }
+});
+
+elements.scanTimePreset.addEventListener("change", () => {
+  syncScanDateRow();
+});
+
+elements.filterScanBtn.addEventListener("click", async () => {
+  elements.filterScanBtn.disabled = true;
+  elements.filterScanBtn.textContent = "Đang quét...";
+
+  try {
+    await scanTendersFromApi();
+  } catch (error) {
+    handleError(error);
+  } finally {
+    elements.filterScanBtn.disabled = false;
+    elements.filterScanBtn.textContent = "Quét ngay";
   }
 });
 
@@ -705,6 +810,7 @@ function handleError(error) {
   showToast(error.message || "Có lỗi xảy ra");
 }
 
+syncScanDateRow();
 applyRouteFromHash();
 ensureAuthenticated()
   .then(() => Promise.all([loadProvinces(), loadStats(), loadSavedTenders()]))

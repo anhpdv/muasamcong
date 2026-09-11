@@ -18,15 +18,22 @@
     "times": ["08:00", "12:00", "17:00"],
     "checkIntervalSeconds": 30,
     "filters": {
-      "provCodes": ["08", "44"],
-      "provNames": ["Tỉnh Tuyên Quang", "Tỉnh Quảng Trị"],
-      "investFields": ["HH", "PT", "TV"],
+      "provCodes": ["01", "08", "15", "25", "33", "44"],
+      "provNames": [
+        "Thành phố Hà Nội",
+        "Tỉnh Tuyên Quang",
+        "Tỉnh Lào Cai",
+        "Tỉnh Phú Thọ",
+        "Tỉnh Hưng Yên",
+        "Tỉnh Quảng Trị"
+      ],
+      "investFields": ["HH"],
       "sortBy": "publicDate",
       "sortType": "DESC",
       "publicDateToday": true
     },
     "pageSize": 10,
-    "maxPages": 5
+    "maxPages": 10
   },
   "auth": {
     "sessionTtlHours": 168,

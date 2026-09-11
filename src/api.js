@@ -13,12 +13,33 @@ export function getTodayRange(timezone = "Asia/Ho_Chi_Minh", date = new Date()) 
   };
 }
 
+/** MSC trả ISO không có Z; coi là UTC để khớp filter publicDate của API. */
+export function parseMscDate(value) {
+  if (!value) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  const normalized = hasZone ? raw : `${raw}Z`;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function isPublicDateToday(
   publicDate,
   timezone = "Asia/Ho_Chi_Minh",
   date = new Date(),
 ) {
-  if (!publicDate) {
+  const parsed = parseMscDate(publicDate);
+  if (!parsed) {
     return false;
   }
 
@@ -29,7 +50,7 @@ export function isPublicDateToday(
     day: "2-digit",
   });
 
-  return formatter.format(new Date(publicDate)) === formatter.format(date);
+  return formatter.format(parsed) === formatter.format(date);
 }
 
 const DEFAULT_HEADERS = {

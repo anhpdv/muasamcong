@@ -110,7 +110,7 @@ async function loadUsers() {
 async function ensureAdmin() {
   const me = await fetchJson("/api/auth/me");
   currentUser = me.user;
-  adminUserChip.textContent = `${me.user.username} (${me.user.role})`;
+  adminUserChip.textContent = me.user.username;
 
   if (me.user.role !== "admin") {
     window.location.href = "/app";

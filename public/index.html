@@ -7,84 +7,99 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="icon" href="/logo-hainam.png" type="image/png" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=6" />
   </head>
   <body>
-    <div class="msc-topbar">
-      <div class="msc-topbar__inner">
-        <span class="msc-topbar__tag">Hệ thống theo dõi nội bộ</span>
-        <div class="msc-topbar__actions">
+    <header class="app-header">
+      <div class="app-header__inner">
+        <a class="app-header__brand" href="/app">
+          <img
+            class="app-header__logo"
+            src="/logo-hainam.png"
+            alt="HAINAM"
+            width="140"
+            height="36"
+          />
+          <div class="app-header__titles">
+            <div class="app-header__name">AI Mua sắm công</div>
+            <div class="app-header__sub">Theo dõi TBMT</div>
+          </div>
+        </a>
+
+        <div class="app-header__actions">
           <a
-            class="msc-topbar__link"
+            class="app-header__link"
             href="https://muasamcong.mpi.gov.vn/web/guest/home"
             target="_blank"
             rel="noopener noreferrer"
+            >Cổng MSC</a
           >
-            Cổng thông tin đấu thầu quốc gia
-          </a>
-          <a class="msc-topbar__link" href="/admin" id="adminLink" hidden>Quản trị</a>
+          <a class="app-header__link" href="/admin" id="adminLink" hidden>Quản trị</a>
           <span class="user-chip" id="userChip">—</span>
           <button id="logoutBtn" class="btn btn--ghost btn--sm" type="button">Đăng xuất</button>
+          <button id="refreshBtn" class="btn btn--primary btn--sm" type="button" title="Quét theo bộ lọc lịch mặc định (hôm nay)">
+            Quét mặc định
+          </button>
         </div>
-      </div>
-    </div>
-
-    <header class="site-header">
-      <div class="site-header__inner">
-        <div class="site-header__brand">
-          <a class="site-header__logo" href="/app" aria-label="HAINAM GLOBAL">
-            <img src="/logo-hainam.png" alt="HAINAM GLOBAL" class="site-header__logo-img" width="180" height="48" />
-          </a>
-          <div class="site-header__titles">
-            <p class="site-header__org">Cổng thông tin đấu thầu</p>
-            <h1>AI Mua sắm công</h1>
-            <p class="site-header__desc">Theo dõi TBMT từ muasamcong.mpi.gov.vn</p>
-          </div>
-        </div>
-        <button id="refreshBtn" class="btn btn--primary" type="button">
-          Quét ngay
-        </button>
       </div>
     </header>
 
     <main class="page">
-      <section class="search-hero">
-        <div class="search-hero__head">
-          <h2>Tìm kiếm gói thầu</h2>
-          <p>Tra cứu theo mã TBMT, tên gói, chủ đầu tư hoặc địa điểm</p>
+      <section class="scan-panel">
+        <div class="scan-panel__head">
+          <h2>Quét gói thầu trên Mua sắm công</h2>
+          <p>Chọn bộ lọc rồi quét TBMT từ muasamcong.mpi.gov.vn — không ảnh hưởng danh sách bên dưới cho đến khi bấm quét.</p>
         </div>
-        <div class="search-hero__bar">
-          <input
-            id="searchInput"
-            type="search"
-            placeholder="Nhập từ khóa (ví dụ: IB2600277918 hoặc tên gói thầu)..."
-          />
-          <button class="search-hero__submit" type="button" id="searchSubmitBtn">
-            Tìm kiếm
-          </button>
-        </div>
-        <div class="search-hero__filters">
-          <select id="provinceFilter" aria-label="Lọc tỉnh thành">
-            <option value="">Tất cả tỉnh/thành</option>
+        <div class="scan-panel__filters">
+          <select id="scanProvince" aria-label="Tỉnh/thành để quét">
+            <option value="">Chọn tỉnh/thành</option>
           </select>
-          <select id="fieldFilter" aria-label="Lọc lĩnh vực">
+          <select id="scanField" aria-label="Lĩnh vực để quét">
             <option value="">Tất cả lĩnh vực</option>
             <option value="HH">Hàng hóa</option>
             <option value="XL">Xây lắp</option>
             <option value="TV">Tư vấn</option>
             <option value="PT">Phi tư vấn</option>
           </select>
-          <select id="sortSelect" aria-label="Sắp xếp">
-            <option value="publicDate:desc">Mới đăng nhất</option>
-            <option value="crawledAt:desc">Mới quét nhất</option>
-            <option value="bidCloseDate:asc">Sắp đóng thầu</option>
-            <option value="bidName:asc">Tên A-Z</option>
+          <select id="scanTimePreset" aria-label="Thời gian đăng tải">
+            <option value="today">Hôm nay</option>
+            <option value="7d">7 ngày gần đây</option>
+            <option value="30d">30 ngày gần đây</option>
+            <option value="custom">Tùy chọn khoảng ngày</option>
+            <option value="all">Không giới hạn ngày</option>
           </select>
+          <input
+            id="scanKeyword"
+            type="search"
+            placeholder="Từ khóa tùy chọn (mã TBMT, tên gói...)"
+            aria-label="Từ khóa quét"
+          />
+          <button
+            id="filterScanBtn"
+            class="btn btn--primary scan-panel__btn"
+            type="button"
+            title="Quét toàn bộ gói thầu theo bộ lọc đã chọn"
+          >
+            Quét ngay
+          </button>
         </div>
+        <div class="scan-panel__dates" id="scanDateRow" hidden>
+          <label class="scan-panel__date">
+            <span>Từ ngày</span>
+            <input id="scanDateFrom" type="date" />
+          </label>
+          <label class="scan-panel__date">
+            <span>Đến ngày</span>
+            <input id="scanDateTo" type="date" />
+          </label>
+        </div>
+        <p class="scan-panel__hint">
+          Khác với <strong>Quét mặc định</strong> trên thanh trên (lịch cố định). Mục này quét theo tỉnh/lĩnh vực/thời gian bạn chọn — không ảnh hưởng bộ lọc danh sách bên dưới.
+        </p>
       </section>
 
       <section class="stats" id="stats">
@@ -115,6 +130,21 @@
             <p id="resultSummary">Đang tải...</p>
           </div>
           <span id="sourceBadge" class="source-badge source-badge--saved">Dữ liệu đã lưu</span>
+        </div>
+
+        <div class="panel__toolbar">
+          <input
+            id="listSearchInput"
+            type="search"
+            placeholder="Lọc danh sách đã lưu (mã TBMT, tên gói...)"
+            aria-label="Lọc danh sách"
+          />
+          <select id="listSortSelect" aria-label="Sắp xếp danh sách">
+            <option value="publicDate:desc">Mới đăng nhất</option>
+            <option value="crawledAt:desc">Mới quét nhất</option>
+            <option value="bidCloseDate:asc">Sắp đóng thầu</option>
+            <option value="bidName:asc">Tên A-Z</option>
+          </select>
         </div>
 
         <div class="table-wrap">
@@ -165,6 +195,6 @@
 
     <div id="toast" class="toast" hidden></div>
 
-    <script src="/app.js" type="module"></script>
+    <script src="/app.js?v=6" type="module"></script>
   </body>
 </html>

@@ -68,6 +68,61 @@ export async function saveNewTenders(paths, state, records) {
   return newSaved;
 }
 
+async function fetchScanPages(config, options = {}) {
+  const pageSize = options.pageSize || config.pageSize || 10;
+  const fetchAll = Boolean(options.fetchAll);
+  const maxPages = fetchAll
+    ? Math.min(Number(options.maxPages) || 50, 100)
+    : 1;
+
+  const searchOptions = {
+    pageSize,
+    keyword: options.keyword || "",
+    investField: options.investField || "",
+    investFields: options.investFields || [],
+    provCode: options.provCode || "",
+    provCodes: options.provCodes || [],
+    sortBy: options.sortBy || "publicDate",
+    sortType: options.sortType || "DESC",
+    publicDateToday: Boolean(options.publicDateToday),
+    publicDateFrom: options.publicDateFrom || "",
+    publicDateTo: options.publicDateTo || "",
+    timezone: options.timezone || config.schedule?.timezone || "Asia/Ho_Chi_Minh",
+  };
+
+  const collected = [];
+  let totalElements = 0;
+  let totalPages = 1;
+  let pagesFetched = 0;
+
+  for (let pageNumber = 0; pageNumber < maxPages; pageNumber += 1) {
+    const page = await searchTenders(config, {
+      ...searchOptions,
+      pageNumber: fetchAll ? pageNumber : options.pageNumber || 0,
+    });
+
+    pagesFetched += 1;
+    totalElements = page.totalElements ?? totalElements;
+    totalPages = page.totalPages || totalPages;
+
+    if (!page.content?.length) {
+      break;
+    }
+
+    collected.push(...page.content);
+
+    if (!fetchAll) {
+      break;
+    }
+
+    if (page.last || pageNumber >= totalPages - 1) {
+      break;
+    }
+  }
+
+  return { collected, totalElements, totalPages, pagesFetched };
+}
+
 export async function scanTenders(config, options = {}) {
   const paths = resolveDataPaths(config, options.rootDir || process.cwd());
   await ensureDataDir(paths.dataDir);
@@ -80,18 +135,13 @@ export async function scanTenders(config, options = {}) {
     initialized: Boolean(state?.initialized),
   };
 
-  const page = await searchTenders(config, {
-    pageNumber: options.pageNumber || 0,
-    pageSize: options.pageSize || config.pageSize || 10,
-    keyword: options.keyword || "",
-    investField: options.investField || "",
-    provCode: options.provCode || "",
-  });
+  const { collected, totalElements, pagesFetched } = await fetchScanPages(
+    config,
+    options,
+  );
 
   const crawledAt = new Date().toISOString();
-  const normalized = page.content.map((item) =>
-    normalizeTender(item, crawledAt),
-  );
+  const normalized = collected.map((item) => normalizeTender(item, crawledAt));
 
   const shouldSave = options.saveNew !== false;
   const newRecords = shouldSave
@@ -115,22 +165,34 @@ export async function scanTenders(config, options = {}) {
     return toPublicTender(withStatus);
   });
 
+  const filterNote = [
+    options.provCode || (options.provCodes || []).join(",") || "",
+    options.investField || (options.investFields || []).join(",") || "",
+    options.keyword || "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return {
     ok: true,
     source: "api",
     message:
       newRecords.length > 0
-        ? `Quét được ${items.length} gói thầu, lưu mới ${newRecords.length} gói`
-        : `Quét được ${items.length} gói thầu, không có gói mới`,
+        ? `Quét ${items.length} gói${filterNote ? ` (${filterNote})` : ""}, lưu mới ${newRecords.length} gói`
+        : `Quét ${items.length} gói${filterNote ? ` (${filterNote})` : ""}, không có gói mới`,
     items,
     newCount: newRecords.length,
     checked: items.length,
-    totalElements: page.totalElements ?? items.length,
+    totalElements: totalElements || items.length,
+    pagesFetched,
     totalSeen: mutableState.seenKeys.size,
     filters: {
       keyword: options.keyword || "",
       investField: options.investField || "",
+      investFields: options.investFields || [],
       provCode: options.provCode || "",
+      provCodes: options.provCodes || [],
+      fetchAll: Boolean(options.fetchAll),
     },
   };
 }
