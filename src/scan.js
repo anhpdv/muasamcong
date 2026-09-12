@@ -149,11 +149,13 @@ export async function scanTenders(config, options = {}) {
     ? await saveNewTenders(paths, mutableState, normalized)
     : [];
 
+  let mtpSyncResult = null;
   if (normalized.length > 0) {
     try {
-      await syncToMtp(normalized);
+      mtpSyncResult = await syncToMtp(normalized);
     } catch (err) {
       console.error("[MTP Sync Scan Error]", err);
+      mtpSyncResult = { ok: false, synced: 0, failed: normalized.length, errors: [err.message] };
     }
   }
 
@@ -195,6 +197,7 @@ export async function scanTenders(config, options = {}) {
     totalElements: totalElements || items.length,
     pagesFetched,
     totalSeen: mutableState.seenKeys.size,
+    mtpSync: mtpSyncResult,
     filters: {
       keyword: options.keyword || "",
       investField: options.investField || "",
