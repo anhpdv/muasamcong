@@ -6,38 +6,63 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const envPath = path.join(rootDir, ".env");
 
-// Tự động load .env nếu có
-try {
-  if (typeof process.loadEnvFile === "function") {
-    if (fs.existsSync(envPath)) {
-      process.loadEnvFile(envPath);
-    }
-  } else if (fs.existsSync(envPath)) {
-    const envContent = fs.readFileSync(envPath, "utf8");
-    for (const line of envContent.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx > 0) {
-        const key = trimmed.slice(0, eqIdx).trim();
-        let val = trimmed.slice(eqIdx + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
+/**
+ * Tải trực tiếp biến môi trường từ file .env (hỗ trợ UTF-8 BOM, comment, quote, nạp lại động)
+ */
+export function loadEnv() {
+  const candidatePaths = [
+    path.join(rootDir, ".env"),
+    path.join(rootDir, "..", ".env"),
+    path.resolve(".env")
+  ];
+
+  for (const envFile of candidatePaths) {
+    if (fs.existsSync(envFile)) {
+      try {
+        let content = fs.readFileSync(envFile, "utf8");
+        // Remove UTF-8 BOM if present
+        if (content.charCodeAt(0) === 0xFEFF) {
+          content = content.slice(1);
         }
-        if (!process.env[key]) {
-          process.env[key] = val;
+
+        for (const line of content.split(/\r?\n/)) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith("#")) continue;
+
+          const eqIdx = trimmed.indexOf("=");
+          if (eqIdx > 0) {
+            const key = trimmed.slice(0, eqIdx).trim();
+            let val = trimmed.slice(eqIdx + 1).trim();
+
+            // Tách comment ở cuối dòng (ví dụ: KEY=VAL # comment)
+            const hashIdx = val.indexOf(" #");
+            if (hashIdx > 0) {
+              val = val.slice(0, hashIdx).trim();
+            }
+
+            if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+              val = val.slice(1, -1);
+            }
+
+            process.env[key] = val;
+          }
         }
+      } catch (err) {
+        console.error(`[MTP Sync] Lỗi khi đọc file .env tại ${envFile}:`, err.message);
       }
     }
   }
-} catch (e) {
-  // Bỏ qua nếu không load được .env
 }
+
+// Nạp env khi module vừa load
+loadEnv();
 
 /**
  * Trả về cấu hình MTP hiện tại (dùng cho debug)
  */
 export function getMtpConfig() {
+  loadEnv(); // Cập nhật lại từ .env nếu file vừa thay đổi
+
   const mtpUrl = (process.env.MTP_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
   const endpoint = process.env.MTP_API_ENDPOINT || "/api/method/crawl_document.api.msc.save_msc_tender";
   const apiUrl = `${mtpUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
@@ -53,9 +78,13 @@ export function getMtpConfig() {
     hasAuth,
     apiKeyPreview: apiKey ? `${apiKey.slice(0, 6)}...` : "(trống)",
     apiSecretPreview: apiSecret ? `${apiSecret.slice(0, 4)}...${apiSecret.slice(-4)}` : "(trống)",
-    envFileExists: fs.existsSync(envPath),
-    envFilePath: envPath,
+    envFileExists: candidatePathsExists(),
+    envFilePath: path.join(rootDir, ".env"),
   };
+}
+
+function candidatePathsExists() {
+  return fs.existsSync(path.join(rootDir, ".env")) || fs.existsSync(path.join(rootDir, "..", ".env"));
 }
 
 /**
