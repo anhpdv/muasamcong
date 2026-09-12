@@ -1,5 +1,6 @@
 import { searchTenders } from "./api.js";
 import { resolveDataPaths, toPublicTender } from "./loadTenders.js";
+import { syncToMtp } from "./mtpSync.js";
 import {
   enrichWithWorkflowStatus,
   loadWorkflowStatuses,
@@ -147,6 +148,14 @@ export async function scanTenders(config, options = {}) {
   const newRecords = shouldSave
     ? await saveNewTenders(paths, mutableState, normalized)
     : [];
+
+  if (normalized.length > 0) {
+    try {
+      await syncToMtp(normalized);
+    } catch (err) {
+      console.error("[MTP Sync Scan Error]", err);
+    }
+  }
 
   mutableState.initialized = true;
   mutableState.lastCheckAt = crawledAt;

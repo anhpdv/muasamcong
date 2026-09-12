@@ -26,6 +26,7 @@ import {
   WORKFLOW_STATUS_OPTIONS,
 } from "./tenderStatus.js";
 import { tenderKey } from "./normalize.js";
+import { syncToMtp } from "./mtpSync.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -486,6 +487,24 @@ function createServer(config, paths, auth) {
           ok: true,
           message: `Phát hiện ${result.newCount} gói thầu mới`,
           ...result,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/sync-mtp" && request.method === "POST") {
+        const body = await readBody(request);
+        const catalog = await loadTenderCatalog(paths);
+        let targets = catalog;
+        if (body.id) {
+          targets = catalog.filter(
+            (item) => item.id === body.id || item.notifyNo === body.id || tenderKey(item) === body.id,
+          );
+        }
+        await syncToMtp(targets);
+        sendJson(response, 200, {
+          ok: true,
+          message: `Đã gửi đồng bộ ${targets.length} gói thầu sang MTP`,
+          count: targets.length,
         });
         return;
       }
