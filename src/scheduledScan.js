@@ -5,6 +5,7 @@ import { resolveDataPaths } from "./loadTenders.js";
 import { normalizeTender, tenderKey } from "./normalize.js";
 import { saveNewTenders } from "./scan.js";
 import { ensureDataDir, loadState, saveState } from "./storage.js";
+import { syncToMtp } from "./mtpSync.js";
 
 function log(message) {
   const time = new Date().toISOString();
@@ -89,6 +90,14 @@ export async function runScheduledScan(config, rootDir) {
   const rawItems = await fetchCandidates(config, { seenKeys: mutableState.seenKeys });
   const normalized = rawItems.map((item) => normalizeTender(item, crawledAt));
   const newRecords = await saveNewTenders(paths, mutableState, normalized);
+
+  if (normalized.length > 0) {
+    try {
+      await syncToMtp(normalized);
+    } catch (err) {
+      console.error("[MTP Sync Scheduled Scan Error]", err);
+    }
+  }
 
   if (normalized[0]?.publicDate) {
     mutableState.lastPublicDate = normalized[0].publicDate;

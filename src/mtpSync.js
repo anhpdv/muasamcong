@@ -45,7 +45,7 @@ export async function syncToMtp(tenders) {
   }
 
   const mtpUrl = (process.env.MTP_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
-  const endpoint = process.env.MTP_API_ENDPOINT || "/api/method/mtp.api.msc.save_msc_tender";
+  const endpoint = process.env.MTP_API_ENDPOINT || "/api/method/crawl_document.api.msc.save_msc_tender";
   const apiUrl = `${mtpUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   // Cấu hình headers bao gồm Authorization nếu được khai báo trong .env
