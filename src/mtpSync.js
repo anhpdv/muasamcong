@@ -34,14 +34,16 @@ try {
   // Bỏ qua nếu không load được .env
 }
 
-
+/**
+ * Trả về cấu hình MTP hiện tại (dùng cho debug)
+ */
 export function getMtpConfig() {
   const mtpUrl = (process.env.MTP_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
   const endpoint = process.env.MTP_API_ENDPOINT || "/api/method/crawl_document.api.msc.save_msc_tender";
   const apiUrl = `${mtpUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
-  const apiKey = process.env.MTP_API_KEY || "";
-  const apiSecret = process.env.MTP_API_SECRET || "";
-  const authToken = process.env.MTP_AUTH_TOKEN || "";
+  const apiKey = (process.env.MTP_API_KEY || "").trim();
+  const apiSecret = (process.env.MTP_API_SECRET || "").trim();
+  const authToken = (process.env.MTP_AUTH_TOKEN || "").trim();
   const hasAuth = Boolean((apiKey && apiSecret) || authToken);
 
   return {
@@ -56,14 +58,21 @@ export function getMtpConfig() {
   };
 }
 
-function buildHeaders() {
+/**
+ * Build headers cho request tới MTP
+ */
+function buildHeaders(includeAuth = true) {
   const headers = {
     "Content-Type": "application/json",
   };
 
-  const apiKey = process.env.MTP_API_KEY;
-  const apiSecret = process.env.MTP_API_SECRET;
-  const authToken = process.env.MTP_AUTH_TOKEN;
+  if (!includeAuth) {
+    return headers;
+  }
+
+  const apiKey = (process.env.MTP_API_KEY || "").trim();
+  const apiSecret = (process.env.MTP_API_SECRET || "").trim();
+  const authToken = (process.env.MTP_AUTH_TOKEN || "").trim();
 
   if (apiKey && apiSecret) {
     headers["Authorization"] = `token ${apiKey}:${apiSecret}`;
@@ -76,9 +85,12 @@ function buildHeaders() {
   return headers;
 }
 
+/**
+ * Test kết nối tới MTP backend
+ */
 export async function testMtpConnection() {
   const config = getMtpConfig();
-  const headers = buildHeaders();
+  const headers = buildHeaders(true);
 
   const result = {
     config,
@@ -87,7 +99,7 @@ export async function testMtpConnection() {
     doctypeExists: null,
   };
 
-  // Test 1: Connectivity - thử gọi trang chủ
+  // Test 1: Connectivity & Auth check
   try {
     const pingUrl = `${config.mtpUrl}/api/method/frappe.auth.get_logged_user`;
     const t0 = Date.now();
@@ -134,12 +146,12 @@ export async function testMtpConnection() {
     };
   }
 
-  // Test 2: Kiểm tra DocType tồn tại qua API
+  // Test 2: Kiểm tra DocType MTP MSC Tender tồn tại qua API
   try {
     const docUrl = `${config.mtpUrl}/api/resource/MTP MSC Tender?limit_page_length=1`;
     const res = await fetch(docUrl, {
       method: "GET",
-      headers,
+      headers: buildHeaders(false), // Dùng guest header nếu auth chưa đúng
     });
     const body = await res.text();
 
@@ -149,7 +161,7 @@ export async function testMtpConnection() {
         result.doctypeExists = {
           ok: true,
           count: data.data?.length ?? 0,
-          message: "DocType MTP MSC Tender tồn tại",
+          message: "DocType MTP MSC Tender tồn tại trên Cloud",
         };
       } catch {
         result.doctypeExists = { ok: false, error: "Invalid JSON", body: body.substring(0, 200) };
@@ -170,7 +182,8 @@ export async function testMtpConnection() {
 
 /**
  * Đồng bộ danh sách tender sang MTP backend.
- * Trả về { ok, synced, failed, errors[] } để hiển thị trên giao diện.
+ * Nếu API Key/Secret trong .env bị lỗi 401, tự động fallback sang Guest request
+ * vì API save_msc_tender cho phép allow_guest=True.
  */
 export async function syncToMtp(tenders) {
   if (!tenders) {
@@ -183,21 +196,47 @@ export async function syncToMtp(tenders) {
   }
 
   const config = getMtpConfig();
-  const headers = buildHeaders();
-
-  const syncResults = { ok: true, synced: 0, failed: 0, errors: [], apiUrl: config.apiUrl, hasAuth: config.hasAuth };
+  const syncResults = {
+    ok: true,
+    synced: 0,
+    failed: 0,
+    errors: [],
+    warnings: [],
+    apiUrl: config.apiUrl,
+    hasAuth: config.hasAuth,
+  };
 
   for (const tender of tenderList) {
     const key = tender.notifyNoStand || tender.notifyNo || tender.id || "unknown";
-
     const { raw, provCodes, ...cleanTender } = tender;
+    const bodyPayload = JSON.stringify({ tender_data: cleanTender });
+
+    let response = null;
+    let usedGuestFallback = false;
 
     try {
-      const response = await fetch(config.apiUrl, {
+      // 1. Thử gửi với Auth header trước
+      response = await fetch(config.apiUrl, {
         method: "POST",
-        headers,
-        body: JSON.stringify({ tender_data: cleanTender }),
+        headers: buildHeaders(true),
+        body: bodyPayload,
       });
+
+      // 2. Nếu trả về 401 AuthenticationError, tự động thử lại mà KHÔNG gửi Auth header (Guest)
+      if (response.status === 401 && config.hasAuth) {
+        usedGuestFallback = true;
+        const warnMsg = `[MTP Sync Warning] API Key/Secret trong .env bị lỗi 401 cho gói ${key}. Đang tự động thử lại với Guest mode...`;
+        console.warn(warnMsg);
+        if (!syncResults.warnings.includes(warnMsg)) {
+          syncResults.warnings.push(warnMsg);
+        }
+
+        response = await fetch(config.apiUrl, {
+          method: "POST",
+          headers: buildHeaders(false),
+          body: bodyPayload,
+        });
+      }
 
       if (!response.ok) {
         const errText = await response.text();
@@ -211,7 +250,8 @@ export async function syncToMtp(tenders) {
       const resData = await response.json();
       const msg = resData?.message || resData;
       if (msg?.success) {
-        console.log(`[MTP Sync] ✅ Đã lưu gói thầu ${key} sang MTP (docname: ${msg.docname})`);
+        const modeNote = usedGuestFallback ? " (Guest Mode fallback)" : "";
+        console.log(`[MTP Sync] ✅ Đã lưu gói thầu ${key} sang MTP (docname: ${msg.docname})${modeNote}`);
         syncResults.synced += 1;
       } else {
         const errMsg = `API error cho ${key}: ${JSON.stringify(msg).substring(0, 300)}`;
