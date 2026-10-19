@@ -211,7 +211,7 @@ export async function loadTenderCatalog(paths) {
           provName: "",
           planNo: "",
           crawledAt: state?.lastCheckAt || "",
-          detailUrl: `https://muasamcong.mpi.gov.vn/web/guest/contractor-selection?render=search&keyword=${encodeURIComponent(notifyNo)}`,
+          detailUrl: `https://muasamcong.mof.gov.vn/web/guest/contractor-selection?render=search&keyword=${encodeURIComponent(notifyNo)}`,
           raw: null,
         },
         { isSaved: false, isTracked: true },

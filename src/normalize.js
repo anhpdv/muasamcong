@@ -76,7 +76,7 @@ function firstValue(value) {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
-const PORTAL_GUEST = "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection";
+const PORTAL_GUEST = "https://muasamcong.mof.gov.vn/web/guest/contractor-selection";
 const PORTLET_ID = "egpportalcontractorselectionv2_WAR_egpportalcontractorselectionv2";
 const PORTLET_RENDER = `_${PORTLET_ID}_render`;
 
@@ -177,7 +177,7 @@ export function buildSearchUrl(keyword, searchWith = "") {
 }
 
 export function buildFileDownloadUrl(config, file = {}) {
-  const baseUrl = config?.baseUrl || "https://muasamcong.mpi.gov.vn";
+  const baseUrl = config?.baseUrl || "https://muasamcong.mof.gov.vn";
 
   if (file.url) {
     return file.url.startsWith("http") ? file.url : `${baseUrl}${file.url}`;

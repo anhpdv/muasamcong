@@ -1,5 +1,5 @@
 {
-  "baseUrl": "https://muasamcong.mpi.gov.vn",
+  "baseUrl": "https://muasamcong.mof.gov.vn",
   "searchEndpoint": "/o/egp-portal-home/services/smart/search",
   "pageSize": 10,
   "pollIntervalMinutes": 5,

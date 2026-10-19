@@ -58,8 +58,15 @@ const DEFAULT_HEADERS = {
   Accept: "application/json",
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  Referer: "https://muasamcong.mpi.gov.vn/web/guest/contractor-selection",
 };
+
+function requestHeaders(url) {
+  const origin = new URL(url).origin;
+  return {
+    ...DEFAULT_HEADERS,
+    Referer: `${origin}/web/guest/contractor-selection`,
+  };
+}
 
 const PORTAL_SERVICE_PREFIX = "/o/egp-portal-home/services";
 
@@ -155,13 +162,25 @@ export function buildSearchPayload({
   ];
 }
 
-async function postJson(url, body, { allowHtml = false } = {}) {
+async function postJson(url, body, { allowHtml = false, redirects = 0 } = {}) {
   const response = await fetch(url, {
     method: "POST",
-    headers: DEFAULT_HEADERS,
+    headers: requestHeaders(url),
     body: JSON.stringify(body),
+    redirect: "manual",
     signal: AbortSignal.timeout(60000),
   });
+
+  if ([301, 302, 303, 307, 308].includes(response.status)) {
+    const location = response.headers.get("location");
+    if (!location || redirects >= 3) {
+      throw new Error(`API chuyển hướng không hợp lệ (${response.status})`);
+    }
+    return postJson(new URL(location, url).toString(), body, {
+      allowHtml,
+      redirects: redirects + 1,
+    });
+  }
 
   const text = await response.text();
   if (!response.ok) {
