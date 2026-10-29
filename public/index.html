@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="/logo-hainam.png" type="image/png" />
-    <link rel="stylesheet" href="/styles.css?v=6" />
+    <link rel="stylesheet" href="/styles.css?v=12" />
   </head>
   <body>
     <header class="app-header">
@@ -31,6 +31,9 @@
         </a>
 
         <div class="app-header__actions">
+          <button class="btn btn--primary btn--sm" type="button" id="tabHainam">
+            Năng lực Hải Nam
+          </button>
           <a
             class="app-header__link"
             href="https://muasamcong.mpi.gov.vn/web/guest/home"
@@ -48,7 +51,7 @@
       </div>
     </header>
 
-    <main class="page">
+    <main class="page" id="viewTenders">
       <section class="scan-panel">
         <div class="scan-panel__head">
           <h2>Quét gói thầu trên Mua sắm công</h2>
@@ -174,6 +177,97 @@
       </section>
     </main>
 
+    <main class="page" id="viewHainam" hidden>
+      <section class="hainam-hero">
+        <div class="hainam-hero__top">
+          <button id="backToTendersBtn" class="btn btn--ghost btn--sm" type="button">
+            ← Về danh sách thầu
+          </button>
+          <span id="hainamAiBadge" class="source-badge source-badge--saved">AI: —</span>
+        </div>
+        <h1 class="hainam-hero__title">Năng lực Hải Nam</h1>
+        <p class="hainam-hero__desc" id="hainamSummary">
+          Kho dữ liệu gốc để AI đối chiếu khi đánh giá độ khả thi gói thầu.
+        </p>
+      </section>
+
+      <section class="hainam-layout">
+        <div class="hainam-editor panel">
+          <div class="hainam-grid">
+            <label class="hainam-field">
+              <span>Tên đơn vị</span>
+              <input id="hainamCompanyName" type="text" placeholder="Công ty Hải Nam" />
+            </label>
+            <label class="hainam-field">
+              <span>Ghi chú nội bộ</span>
+              <input id="hainamNotes" type="text" placeholder="Ví dụ: cập nhật năng lực 2026..." />
+            </label>
+          </div>
+          <div class="hainam-meta-actions">
+            <button id="hainamSaveMetaBtn" class="btn btn--ghost btn--sm" type="button">
+              Lưu tên / ghi chú
+            </button>
+          </div>
+
+          <div class="hainam-docs" id="hainamDocsList"></div>
+
+          <label class="hainam-field hainam-field--full">
+            <span>Thêm nội dung mới (có thể thêm nhiều lần)</span>
+            <input
+              id="hainamDocTitle"
+              type="text"
+              placeholder="Tiêu đề mục (vd: Hợp đồng tương tự 2024, Chứng chỉ...)"
+            />
+            <textarea
+              id="hainamRawText"
+              rows="12"
+              placeholder="Dán nội dung năng lực vào đây, rồi bấm Thêm vào kho. Có thể nhập/import nhiều mục — AI sẽ đọc toàn bộ khi đánh giá thầu."
+            ></textarea>
+          </label>
+
+          <div class="hainam-toolbar">
+            <div class="hainam-toolbar__files">
+              <label class="hainam-file">
+                <input id="hainamFileInput" type="file" accept=".txt,.md,.csv,.json,text/*" multiple />
+                <span>Chọn file (nhiều file)</span>
+              </label>
+              <select id="hainamImportMode" aria-label="Chế độ import">
+                <option value="append">Thêm vào kho</option>
+                <option value="replace">Xóa hết & thay bằng file</option>
+              </select>
+              <button id="hainamImportBtn" class="btn btn--ghost" type="button">Import file</button>
+            </div>
+            <button id="hainamAddTextBtn" class="btn btn--primary" type="button">Thêm vào kho</button>
+          </div>
+          <p class="hainam-import__hint">
+            Hỗ trợ nhiều file .txt / .md / .csv / .json. Mỗi lần thêm = 1 mục trong kho. Khi đánh giá thầu, AI quét toàn bộ các mục.
+          </p>
+        </div>
+
+        <aside class="hainam-side">
+          <article class="hainam-stat panel">
+            <h3>Trạng thái kho</h3>
+            <p id="hainamMeta" class="hainam-stat__meta">Chưa có dữ liệu</p>
+            <ul class="hainam-stat__list">
+              <li>Được phép nhập / import nhiều mục</li>
+              <li>AI đọc <strong>toàn bộ</strong> kho khi đánh giá thầu</li>
+              <li>Không cần gộp một file — cứ thêm dần</li>
+            </ul>
+          </article>
+          <article class="hainam-stat panel hainam-stat--tips">
+            <h3>Nên đưa vào</h3>
+            <ul class="hainam-stat__list">
+              <li>Ngành hàng / lĩnh vực thế mạnh</li>
+              <li>Hợp đồng tương tự (giá trị, năm, chủ đầu tư)</li>
+              <li>Chứng chỉ, giấy phép, năng lực tài chính</li>
+              <li>Nhân sự chủ chốt, máy móc thiết bị</li>
+              <li>Địa bàn hoạt động, hạn chế không nhận thầu</li>
+            </ul>
+          </article>
+        </aside>
+      </section>
+    </main>
+
     <footer class="site-footer">
       <p>
         Dữ liệu nguồn từ
@@ -195,6 +289,6 @@
 
     <div id="toast" class="toast" hidden></div>
 
-    <script src="/app.js?v=6" type="module"></script>
+    <script src="/app.js?v=12" type="module"></script>
   </body>
 </html>

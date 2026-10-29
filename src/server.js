@@ -16,6 +16,24 @@ import { maybeRunDueScans, runScheduledScan } from "./scheduledScan.js";
 import { scanTenders } from "./scan.js";
 import { fetchTenderDocuments } from "./tenderDocuments.js";
 import {
+  decorateHsmtResult,
+  downloadHsmtChapters,
+  readHsmtManifest,
+  resolveHsmtDir,
+} from "./hsmtDownload.js";
+import {
+  deleteHainamDocument,
+  importHainamProfile,
+  loadHainamProfile,
+  profilePublicView,
+  saveHainamProfile,
+} from "./hainamProfile.js";
+import { getAiConfig } from "./aiClient.js";
+import {
+  analyzeTenderInvite,
+  readTenderAnalysis,
+} from "./tenderAnalysis.js";
+import {
   buildSessionCookie,
   clearSessionCookie,
   createAuthStore,
@@ -322,6 +340,202 @@ function createServer(config, paths, auth) {
       const documentsMatch = url.pathname.match(
         /^\/api\/tenders\/([^/]+)\/documents$/,
       );
+
+      const hsmtFileMatch = url.pathname.match(
+        /^\/api\/tenders\/([^/]+)\/hsmt\/file$/,
+      );
+
+      const hsmtMatch = url.pathname.match(/^\/api\/tenders\/([^/]+)\/hsmt$/);
+
+      if (hsmtFileMatch && request.method === "GET") {
+        const id = decodeURIComponent(hsmtFileMatch[1]);
+        const catalog = await loadTenderCatalog(paths);
+        const tender = catalog.find(
+          (item) => item.id === id || item.notifyNo === id || tenderKey(item) === id,
+        );
+        if (!tender) {
+          sendJson(response, 404, { error: "Không tìm thấy gói thầu" });
+          return;
+        }
+
+        const chapter = String(url.searchParams.get("chapter") || "");
+        const name = path.basename(String(url.searchParams.get("name") || ""));
+        if (!["chuong-3", "chuong-5"].includes(chapter) || !name) {
+          sendJson(response, 400, { error: "Tham số file không hợp lệ" });
+          return;
+        }
+
+        const tenderDir = resolveHsmtDir(paths, tender.notifyNo);
+        const chapterDir = path.resolve(tenderDir, chapter);
+        const filePath = path.resolve(chapterDir, name);
+        if (!filePath.startsWith(chapterDir + path.sep)) {
+          sendJson(response, 403, { error: "Forbidden" });
+          return;
+        }
+
+        try {
+          const content = await fs.readFile(filePath);
+          response.writeHead(200, {
+            "Content-Type": "application/octet-stream",
+            "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(name)}`,
+            "Cache-Control": "no-store",
+          });
+          response.end(content);
+        } catch (error) {
+          if (error.code === "ENOENT") {
+            sendJson(response, 404, { error: "Không tìm thấy file" });
+            return;
+          }
+          throw error;
+        }
+        return;
+      }
+
+      if (hsmtMatch && request.method === "GET") {
+        const id = decodeURIComponent(hsmtMatch[1]);
+        const catalog = await loadTenderCatalog(paths);
+        const tender = catalog.find(
+          (item) => item.id === id || item.notifyNo === id || tenderKey(item) === id,
+        );
+        if (!tender) {
+          sendJson(response, 404, { error: "Không tìm thấy gói thầu" });
+          return;
+        }
+
+        const manifest = await readHsmtManifest(paths, tender.notifyNo);
+        const analysis = await readTenderAnalysis(paths, tender.notifyNo);
+        sendJson(response, 200, {
+          ok: true,
+          available: Boolean(manifest),
+          hsmt: decorateHsmtResult(manifest, tender.id || tender.notifyNo),
+          analysis,
+          ai: getAiConfig().configured
+            ? { configured: true, model: getAiConfig().model }
+            : { configured: false },
+        });
+        return;
+      }
+
+      if (hsmtMatch && request.method === "POST") {
+        const id = decodeURIComponent(hsmtMatch[1]);
+        const catalog = await loadTenderCatalog(paths);
+        const tender = catalog.find(
+          (item) => item.id === id || item.notifyNo === id || tenderKey(item) === id,
+        );
+        if (!tender) {
+          sendJson(response, 404, { error: "Không tìm thấy gói thầu" });
+          return;
+        }
+
+        const body = await readBody(request).catch(() => ({}));
+        const force = Boolean(body?.force) || url.searchParams.get("force") === "1";
+        const result = await downloadHsmtChapters(config, tender, paths, { force });
+        const downloadOk = Boolean(result.ok || result.skipped);
+
+        let analysis = null;
+        let analysisError = null;
+        if (downloadOk) {
+          try {
+            analysis = await analyzeTenderInvite(config, tender, paths, result, {
+              force: true,
+            });
+          } catch (error) {
+            analysisError = error.message;
+            analysis = await readTenderAnalysis(paths, tender.notifyNo);
+          }
+        }
+
+        const parts = [
+          result.skipped
+            ? `Đã có sẵn ${result.files?.length || 0} file Chương 3/5`
+            : result.ok
+              ? `Đã tải ${result.files?.length || 0} file Chương 3/5`
+              : result.error || "Tải HSMT thất bại",
+        ];
+        if (analysis?.summary) {
+          parts.push("đã tạo tóm tắt & đánh giá khả thi");
+        } else if (analysisError) {
+          parts.push(`AI: ${analysisError}`);
+        }
+
+        sendJson(response, downloadOk ? 200 : 502, {
+          ok: downloadOk,
+          message: parts.join(" · "),
+          hsmt: decorateHsmtResult(result, tender.id || tender.notifyNo),
+          analysis,
+          analysisError,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/hainam-profile" && request.method === "GET") {
+        const profile = await loadHainamProfile(paths);
+        sendJson(response, 200, {
+          ok: true,
+          profile: profilePublicView(profile),
+          ai: {
+            configured: getAiConfig().configured,
+            model: getAiConfig().model,
+          },
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/hainam-profile" && request.method === "PUT") {
+        const body = await readBody(request);
+        const current = await loadHainamProfile(paths);
+        const saved = await saveHainamProfile(paths, {
+          ...current,
+          companyName: body.companyName ?? current.companyName,
+          notes: body.notes ?? current.notes,
+          documents: Array.isArray(body.documents) ? body.documents : current.documents,
+          updatedBy: user.username,
+        });
+        sendJson(response, 200, {
+          ok: true,
+          message: "Đã lưu thông tin Hải Nam",
+          profile: profilePublicView(saved),
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/hainam-profile/import" && request.method === "POST") {
+        const body = await readBody(request);
+        try {
+          const saved = await importHainamProfile(paths, {
+            text: body.text || body.content || "",
+            texts: body.texts || null,
+            title: body.title || "",
+            notes: body.notes,
+            companyName: body.companyName,
+            fileName: body.fileName || "",
+            mode: body.mode === "replace" ? "replace" : "append",
+            user,
+          });
+          sendJson(response, 200, {
+            ok: true,
+            message: `Đã thêm ${saved.documents?.length || 0} mục vào kho năng lực`,
+            profile: profilePublicView(saved),
+          });
+        } catch (error) {
+          sendJson(response, 400, { error: error.message });
+        }
+        return;
+      }
+
+      const hainamDocMatch = url.pathname.match(
+        /^\/api\/hainam-profile\/documents\/([^/]+)$/,
+      );
+      if (hainamDocMatch && request.method === "DELETE") {
+        const docId = decodeURIComponent(hainamDocMatch[1]);
+        const saved = await deleteHainamDocument(paths, docId, user);
+        sendJson(response, 200, {
+          ok: true,
+          message: "Đã xóa mục năng lực",
+          profile: profilePublicView(saved),
+        });
+        return;
+      }
 
       if (documentsMatch && request.method === "GET") {
         const id = decodeURIComponent(documentsMatch[1]);

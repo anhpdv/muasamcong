@@ -61,6 +61,24 @@ const elements = {
   logoutBtn: document.getElementById("logoutBtn"),
   userChip: document.getElementById("userChip"),
   adminLink: document.getElementById("adminLink"),
+  tabHainam: document.getElementById("tabHainam"),
+  backToTendersBtn: document.getElementById("backToTendersBtn"),
+  viewTenders: document.getElementById("viewTenders"),
+  viewHainam: document.getElementById("viewHainam"),
+  hainamSummary: document.getElementById("hainamSummary"),
+  hainamAiBadge: document.getElementById("hainamAiBadge"),
+  hainamCompanyName: document.getElementById("hainamCompanyName"),
+  hainamNotes: document.getElementById("hainamNotes"),
+  hainamRawText: document.getElementById("hainamRawText"),
+  hainamFileInput: document.getElementById("hainamFileInput"),
+  hainamImportMode: document.getElementById("hainamImportMode"),
+  hainamImportBtn: document.getElementById("hainamImportBtn"),
+  hainamAddTextBtn: document.getElementById("hainamAddTextBtn"),
+  hainamSaveMetaBtn: document.getElementById("hainamSaveMetaBtn"),
+  hainamSaveBtn: document.getElementById("hainamSaveBtn"),
+  hainamDocTitle: document.getElementById("hainamDocTitle"),
+  hainamDocsList: document.getElementById("hainamDocsList"),
+  hainamMeta: document.getElementById("hainamMeta"),
 };
 
 function vietnamTodayKey(date = new Date()) {
@@ -174,7 +192,7 @@ async function fetchJson(url, options = {}) {
     throw new Error("Phiên đăng nhập đã hết hạn");
   }
   if (!response.ok) {
-    throw new Error(data.error || "Yêu cầu thất bại");
+    throw new Error(data.error || data.message || "Yêu cầu thất bại");
   }
   return data;
 }
@@ -449,6 +467,137 @@ function renderFileList(files, emptyText) {
   `;
 }
 
+function renderHsmtFiles(hsmt) {
+  if (!hsmt) {
+    return `<p class="doc-empty">Chưa lấy thông tin mời thầu. Bấm nút bên trên để tải Chương 3 và Chương 5.</p>`;
+  }
+
+  if (!hsmt.ok && !(hsmt.files || []).length) {
+    return `<p class="doc-empty">${escapeHtml(hsmt.error || "Không tải được Chương 3/5.")}</p>`;
+  }
+
+  const groups = [
+    { key: "chuong-3", title: "Chương III · Tiêu chuẩn đánh giá" },
+    { key: "chuong-5", title: "Chương V · Yêu cầu kỹ thuật" },
+  ];
+
+  return groups
+    .map((group) => {
+      const files = (hsmt.files || []).filter((file) => file.chapter === group.key);
+      return `
+        <div class="doc-subsection">
+          <h4>${escapeHtml(group.title)}</h4>
+          ${renderFileList(files, "Không có file đính kèm trong chương này.")}
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderBulletBlock(title, items) {
+  if (!items?.length) {
+    return "";
+  }
+  return `
+    <div class="analysis-block">
+      <h5>${escapeHtml(title)}</h5>
+      <ul>
+        ${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ul>
+    </div>
+  `;
+}
+
+function renderAnalysisSection(analysis) {
+  if (!analysis) {
+    return `
+      <div class="analysis-grid" id="analysisSection">
+        <div class="analysis-card">
+          <h4>Tóm tắt</h4>
+          <p class="doc-empty">Chưa có. Bấm “Lấy thông tin mời thầu” để AI đọc Chương 3 & 5.</p>
+        </div>
+        <div class="analysis-card">
+          <h4>Đánh giá độ khả thi</h4>
+          <p class="doc-empty">
+            Chưa có. Vào mục
+            <button type="button" class="linkish" id="gotoHainamFromAnalysis">Năng lực Hải Nam</button>
+            để import hồ sơ, rồi lấy thông tin mời thầu.
+          </p>
+        </div>
+      </div>
+    `;
+  }
+
+  const summary =
+    typeof analysis.summary === "object" && analysis.summary
+      ? analysis.summary
+      : { overview: analysis.summaryText || analysis.summary || "", chapter3: [], chapter5: [], keyConditions: [] };
+  const f = analysis.feasibility || {};
+
+  return `
+    <div class="analysis-grid" id="analysisSection">
+      <div class="analysis-card">
+        <h4>Tóm tắt</h4>
+        ${
+          summary.overview
+            ? `<p class="analysis-overview">${escapeHtml(summary.overview)}</p>`
+            : `<p class="doc-empty">Chưa có tóm tắt.</p>`
+        }
+        ${renderBulletBlock("Chương III · Tiêu chuẩn đánh giá", summary.chapter3)}
+        ${renderBulletBlock("Chương V · Yêu cầu kỹ thuật", summary.chapter5)}
+        ${renderBulletBlock("Điều kiện then chốt", summary.keyConditions)}
+      </div>
+      <div class="analysis-card analysis-card--feasibility">
+        <h4>Đánh giá độ khả thi</h4>
+        <div class="feasibility-head">
+          <span class="feasibility-badge feasibility-badge--${escapeAttr(f.verdict || "can_xem_xet")}">
+            ${escapeHtml(f.verdictLabel || "Cần xem xét")}
+          </span>
+          <span class="feasibility-score">${f.score == null ? "—" : `${escapeHtml(f.score)}/10`}</span>
+        </div>
+        ${
+          f.recommendation
+            ? `<div class="analysis-block analysis-block--rec"><h5>Khuyến nghị</h5><p>${escapeHtml(f.recommendation)}</p></div>`
+            : ""
+        }
+        ${renderBulletBlock("Lý do (đối chiếu năng lực Hải Nam)", f.reasons)}
+        ${renderBulletBlock("Thiếu hụt / rủi ro", f.gaps)}
+        ${renderBulletBlock("Cảnh báo", analysis.warnings)}
+        <p class="analysis-foot">
+          ${
+            analysis.profileUsed
+              ? "Đã dùng dữ liệu Năng lực Hải Nam đã lưu."
+              : "Chưa có Năng lực Hải Nam — kết quả chỉ mang tính tham khảo."
+          }
+        </p>
+      </div>
+    </div>
+  `;
+}
+
+function renderHsmtInvitePanel(tenderId, hsmt, analysis = null) {
+  const hasFiles = Boolean(hsmt?.files?.length);
+  return `
+    <section class="doc-panel doc-panel--invite" id="hsmtInvitePanel" data-tender-id="${escapeAttr(tenderId)}">
+      <div class="doc-panel__head">
+        <div>
+          <h3>Thông tin mời thầu</h3>
+          <p class="doc-summary">Tải Chương 3 & 5, AI tóm tắt và đánh giá khả thi theo dữ liệu Hải Nam.</p>
+        </div>
+        <div class="doc-panel__actions">
+          <button class="btn btn--primary" type="button" id="fetchHsmtBtn" data-force="${hasFiles ? "1" : "0"}">
+            ${hasFiles ? "Tải lại & phân tích" : "Lấy thông tin mời thầu"}
+          </button>
+        </div>
+      </div>
+      <div id="hsmtInviteBody">
+        ${renderHsmtFiles(hsmt)}
+      </div>
+      ${renderAnalysisSection(analysis)}
+    </section>
+  `;
+}
+
 function renderDocumentsSection(documents) {
   if (!documents) {
     return `
@@ -459,18 +608,6 @@ function renderDocumentsSection(documents) {
   }
 
   const khlcnt = documents.khlcnt || {};
-  const hsmt = documents.hsmt || {};
-
-  const chapterHtml = (hsmt.chapters || [])
-    .map(
-      (chapter) => `
-        <div class="doc-subsection">
-          <h4>${escapeHtml(chapter.title)}</h4>
-          ${renderFileList(chapter.files, "Chưa có file trong mục này.")}
-        </div>
-      `,
-    )
-    .join("");
 
   return `
     <section class="doc-panel">
@@ -493,28 +630,6 @@ function renderDocumentsSection(documents) {
         <div class="detail-item"><span>Ngày quyết định</span><strong>${escapeHtml(khlcnt.decisionDate ? formatDate(khlcnt.decisionDate) : "—")}</strong></div>
       </div>
       ${renderFileList(khlcnt.files, "Chưa lấy được file KHLCNT tự động. Dùng nút Mở KHLCNT để tải trên muasamcong.")}
-    </section>
-
-    <section class="doc-panel">
-      <div class="doc-panel__head">
-        <h3>Hồ sơ mời thầu (HSMT)</h3>
-        <div class="doc-panel__actions">
-          ${
-            hsmt.zipUrl
-              ? `<a class="btn btn--ghost" href="${escapeAttr(hsmt.zipUrl)}" target="_blank" rel="noopener noreferrer">Tải tất cả file</a>`
-              : ""
-          }
-        </div>
-      </div>
-      <div class="doc-subsection">
-        <h4>File đính kèm</h4>
-        ${renderFileList(hsmt.attachments, "Chưa lấy được file đính kèm tự động. Mở gói thầu trên muasamcong → tab Hồ sơ mời thầu.")}
-      </div>
-      <div class="doc-subsection">
-        <h4>Biểu mẫu webform</h4>
-        ${renderFileList(hsmt.webforms, "Chưa lấy được biểu mẫu webform tự động. Tải trên muasamcong → tab Hồ sơ mời thầu.")}
-      </div>
-      ${chapterHtml}
     </section>
   `;
 }
@@ -558,16 +673,23 @@ function renderDetail(item, documents) {
       </div>
     </div>
 
+    <div id="hsmtSection" class="documents-section">
+      ${renderHsmtInvitePanel(item.id || item.notifyNo, null, null)}
+    </div>
+
     <div id="documentsSection" class="documents-section">
       ${
         documents
           ? renderDocumentsSection(documents)
-          : '<div class="doc-loading">Đang tải KHLCNT và HSMT từ muasamcong...</div>'
+          : '<div class="doc-loading">Đang tải KHLCNT từ muasamcong...</div>'
       }
     </div>
 
     <div class="detail-actions">
-      <a class="btn btn--primary" href="${escapeAttr(item.detailUrl)}" target="_blank" rel="noopener noreferrer">
+      <button class="btn btn--primary" type="button" id="fetchHsmtActionBtn">
+        Lấy thông tin mời thầu
+      </button>
+      <a class="btn btn--ghost" href="${escapeAttr(item.detailUrl)}" target="_blank" rel="noopener noreferrer">
         Xem trên muasamcong
       </a>
       ${
@@ -576,7 +698,7 @@ function renderDetail(item, documents) {
           : ""
       }
     </div>
-    <p class="detail-hint">Link mở đúng trang trên muasamcong (portlet detail-v2 / tra cứu KHLCNT).</p>
+    <p class="detail-hint">Bấm “Lấy thông tin mời thầu” để tải Chương 3 & 5, tạo tóm tắt và đánh giá khả thi. Quét thầu không tự tải file.</p>
     </div>
   `;
 
@@ -587,7 +709,87 @@ function renderDetail(item, documents) {
     });
   }
 
+  bindHsmtButtons(item.id || item.notifyNo);
   elements.detailDialog.showModal();
+}
+
+function bindHsmtButtons(tenderId) {
+  const run = (force) => fetchHsmtInvite(tenderId, { force }).catch(handleError);
+  const panelBtn = elements.detailContent.querySelector("#fetchHsmtBtn");
+  const actionBtn = elements.detailContent.querySelector("#fetchHsmtActionBtn");
+  const gotoHainam = elements.detailContent.querySelector("#gotoHainamFromAnalysis");
+  if (panelBtn) {
+    panelBtn.addEventListener("click", () => run(panelBtn.dataset.force === "1"));
+  }
+  if (actionBtn) {
+    actionBtn.addEventListener("click", () => {
+      const force = elements.detailContent.querySelector("#fetchHsmtBtn")?.dataset.force === "1";
+      run(force);
+    });
+  }
+  if (gotoHainam) {
+    gotoHainam.addEventListener("click", () => {
+      elements.detailDialog.close();
+      switchAppTab("hainam");
+    });
+  }
+}
+
+function updateHsmtInviteUi(tenderId, hsmt, analysis = null) {
+  const section = elements.detailContent.querySelector("#hsmtSection");
+  if (section) {
+    section.innerHTML = renderHsmtInvitePanel(tenderId, hsmt, analysis);
+    bindHsmtButtons(tenderId);
+  }
+}
+
+async function loadHsmtStatus(id) {
+  return fetchJson(`/api/tenders/${encodeURIComponent(id)}/hsmt`);
+}
+
+async function fetchHsmtInvite(id, { force = false } = {}) {
+  const panelBtn = elements.detailContent.querySelector("#fetchHsmtBtn");
+  const actionBtn = elements.detailContent.querySelector("#fetchHsmtActionBtn");
+  const body = elements.detailContent.querySelector("#hsmtInviteBody");
+  const analysisSection = elements.detailContent.querySelector("#analysisSection");
+  const buttons = [panelBtn, actionBtn].filter(Boolean);
+
+  for (const btn of buttons) {
+    btn.disabled = true;
+    btn.textContent = "Đang tải & phân tích...";
+  }
+  if (body) {
+    body.innerHTML = `<p class="doc-loading">Đang tải Chương 3 & 5 từ muasamcong...</p>`;
+  }
+  if (analysisSection) {
+    analysisSection.innerHTML = `
+      <div class="analysis-card"><h4>Tóm tắt</h4><p class="doc-loading">AI đang đọc tài liệu...</p></div>
+      <div class="analysis-card"><h4>Đánh giá độ khả thi</h4><p class="doc-loading">Đang đối chiếu dữ liệu Hải Nam...</p></div>
+    `;
+  }
+
+  try {
+    const result = await fetchJson(`/api/tenders/${encodeURIComponent(id)}/hsmt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force: Boolean(force) }),
+    });
+    updateHsmtInviteUi(id, result.hsmt, result.analysis);
+    showToast(result.message || "Đã lấy thông tin mời thầu");
+    if (result.analysisError) {
+      showToast(result.analysisError);
+    }
+    return result;
+  } catch (error) {
+    if (body) {
+      body.innerHTML = `<p class="doc-empty">${escapeHtml(error.message || "Tải thất bại")}</p>`;
+    }
+    for (const btn of buttons) {
+      btn.disabled = false;
+      btn.textContent = "Lấy thông tin mời thầu";
+    }
+    throw error;
+  }
 }
 
 async function loadTenderDocuments(id) {
@@ -638,17 +840,27 @@ async function openDetail(id) {
     item = await fetchJson(`/api/tenders/${encodeURIComponent(id)}`);
   }
 
+  const tenderId = item.id || id;
   renderDetail(item, null);
 
   try {
-    const documents = await loadTenderDocuments(item.id || id);
+    const status = await loadHsmtStatus(tenderId);
+    if (status?.available || status?.analysis) {
+      updateHsmtInviteUi(tenderId, status.hsmt, status.analysis);
+    }
+  } catch {
+    // Chưa có file local — giữ nút lấy thủ công
+  }
+
+  try {
+    const documents = await loadTenderDocuments(tenderId);
     const documentsSection = elements.detailContent.querySelector("#documentsSection");
     if (documentsSection) {
       documentsSection.innerHTML = renderDocumentsSection(documents);
     }
 
     const detailLink = elements.detailContent.querySelector(
-      ".detail-actions a.btn--primary",
+      ".detail-actions a.btn--ghost[href]",
     );
     if (detailLink && documents.detailUrl) {
       detailLink.href = documents.detailUrl;
@@ -658,7 +870,7 @@ async function openDetail(id) {
     if (documentsSection) {
       documentsSection.innerHTML = `
         <section class="doc-panel">
-          <p class="doc-empty">${escapeHtml(error.message || "Không tải được tài liệu từ muasamcong.")}</p>
+          <p class="doc-empty">${escapeHtml(error.message || "Không tải được KHLCNT từ muasamcong.")}</p>
         </section>
       `;
     }
@@ -809,6 +1021,173 @@ function debounce(fn, delay) {
 function handleError(error) {
   showToast(error.message || "Có lỗi xảy ra");
 }
+
+function switchAppTab(tab) {
+  const isHainam = tab === "hainam";
+  elements.viewTenders.hidden = isHainam;
+  elements.viewHainam.hidden = !isHainam;
+  if (elements.tabHainam) {
+    elements.tabHainam.classList.toggle("btn--primary", !isHainam);
+    elements.tabHainam.classList.toggle("btn--ghost", isHainam);
+    elements.tabHainam.textContent = isHainam ? "Đang xem năng lực" : "Năng lực Hải Nam";
+  }
+  if (isHainam) {
+    loadHainamProfileUi().catch(handleError);
+  }
+}
+
+function renderHainamDocs(documents = []) {
+  if (!elements.hainamDocsList) {
+    return;
+  }
+  if (!documents.length) {
+    elements.hainamDocsList.innerHTML =
+      `<p class="hainam-docs__empty">Kho đang trống — thêm text hoặc import nhiều file bên dưới.</p>`;
+    return;
+  }
+  elements.hainamDocsList.innerHTML = documents
+    .map(
+      (doc) => `
+        <article class="hainam-doc" data-id="${escapeAttr(doc.id)}">
+          <div>
+            <h4 class="hainam-doc__title">${escapeHtml(doc.title)}</h4>
+            <p class="hainam-doc__meta">
+              ${escapeHtml(doc.source || "manual")}
+              · ${(doc.chars || 0).toLocaleString("vi-VN")} ký tự
+              ${doc.updatedAt ? ` · ${escapeHtml(formatDate(doc.updatedAt))}` : ""}
+            </p>
+          </div>
+          <button class="btn btn--ghost btn--sm" type="button" data-delete-doc="${escapeAttr(doc.id)}">
+            Xóa
+          </button>
+          <p class="hainam-doc__preview">${escapeHtml(doc.preview || "")}${(doc.chars || 0) > 160 ? "…" : ""}</p>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function fillHainamForm(profile, ai) {
+  elements.hainamCompanyName.value = profile?.companyName || "Hải Nam";
+  elements.hainamNotes.value = profile?.notes || "";
+  const updated = profile?.updatedAt
+    ? `Cập nhật ${formatDate(profile.updatedAt)}${profile.updatedBy ? ` · ${profile.updatedBy}` : ""}`
+    : "Chưa lưu lần nào";
+  const docCount = profile?.documentCount || profile?.documents?.length || 0;
+  elements.hainamSummary.textContent = profile?.hasData
+    ? `Đã sẵn sàng đánh giá · ${docCount} mục · ${profile.charCount.toLocaleString("vi-VN")} ký tự (AI đọc toàn bộ).`
+    : "Chưa có dữ liệu. Thêm nhiều mục text/file — AI sẽ quét hết khi đánh giá thầu.";
+  elements.hainamMeta.innerHTML = profile?.hasData
+    ? `<strong>${docCount} mục trong kho</strong><br>${escapeHtml(updated)} · ${profile.charCount.toLocaleString("vi-VN")} ký tự · AI đọc toàn bộ khi đánh giá.`
+    : `<strong>Trống</strong><br>${escapeHtml(updated)}. Thêm nội dung trước khi lấy thông tin mời thầu.`;
+  elements.hainamAiBadge.textContent = ai?.configured
+    ? `AI: ${ai.model || "đã cấu hình"}`
+    : "AI: chưa cấu hình (.env)";
+  elements.hainamAiBadge.className = `source-badge ${
+    ai?.configured ? "source-badge--live" : "source-badge--saved"
+  }`;
+  renderHainamDocs(profile?.documents || []);
+}
+
+async function loadHainamProfileUi() {
+  const result = await fetchJson("/api/hainam-profile");
+  fillHainamForm(result.profile, result.ai);
+  return result;
+}
+
+async function saveHainamMetaUi() {
+  const result = await fetchJson("/api/hainam-profile", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      companyName: elements.hainamCompanyName.value.trim(),
+      notes: elements.hainamNotes.value.trim(),
+    }),
+  });
+  await loadHainamProfileUi();
+  showToast(result.message || "Đã lưu");
+}
+
+async function addHainamTextEntry() {
+  const text = elements.hainamRawText.value.trim();
+  if (!text) {
+    throw new Error("Nhập nội dung trước khi thêm vào kho");
+  }
+  const result = await fetchJson("/api/hainam-profile/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      title: elements.hainamDocTitle?.value.trim() || "",
+      mode: "append",
+      companyName: elements.hainamCompanyName.value.trim(),
+      notes: elements.hainamNotes.value.trim(),
+    }),
+  });
+  elements.hainamRawText.value = "";
+  if (elements.hainamDocTitle) {
+    elements.hainamDocTitle.value = "";
+  }
+  fillHainamForm(result.profile);
+  await loadHainamProfileUi();
+  showToast("Đã thêm 1 mục vào kho năng lực");
+}
+
+async function importHainamFile() {
+  const files = [...(elements.hainamFileInput.files || [])];
+  if (!files.length) {
+    throw new Error("Chọn ít nhất 1 file để import");
+  }
+  const texts = [];
+  for (const file of files) {
+    texts.push({ text: await file.text(), fileName: file.name, title: file.name });
+  }
+  const result = await fetchJson("/api/hainam-profile/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      texts,
+      mode: elements.hainamImportMode.value,
+      companyName: elements.hainamCompanyName.value.trim(),
+      notes: elements.hainamNotes.value.trim(),
+    }),
+  });
+  elements.hainamFileInput.value = "";
+  fillHainamForm(result.profile);
+  await loadHainamProfileUi();
+  showToast(`Đã import ${files.length} file vào kho`);
+}
+
+async function deleteHainamDoc(id) {
+  const result = await fetchJson(`/api/hainam-profile/documents/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  fillHainamForm(result.profile);
+  await loadHainamProfileUi();
+  showToast(result.message || "Đã xóa");
+}
+
+elements.tabHainam?.addEventListener("click", () => switchAppTab("hainam"));
+elements.backToTendersBtn?.addEventListener("click", () => switchAppTab("tenders"));
+elements.hainamSaveMetaBtn?.addEventListener("click", () => {
+  saveHainamMetaUi().catch(handleError);
+});
+elements.hainamSaveBtn?.addEventListener("click", () => {
+  addHainamTextEntry().catch(handleError);
+});
+elements.hainamAddTextBtn?.addEventListener("click", () => {
+  addHainamTextEntry().catch(handleError);
+});
+elements.hainamImportBtn?.addEventListener("click", () => {
+  importHainamFile().catch(handleError);
+});
+elements.hainamDocsList?.addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-delete-doc]");
+  if (!btn) {
+    return;
+  }
+  deleteHainamDoc(btn.dataset.deleteDoc).catch(handleError);
+});
 
 syncScanDateRow();
 applyRouteFromHash();

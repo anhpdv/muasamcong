@@ -315,5 +315,6 @@ export function resolveDataPaths(config, rootDir) {
     csvPath: path.join(dataDir, config.csvFile),
     statePath: path.join(dataDir, config.stateFile),
     statusesPath: path.join(dataDir, config.statusesFile || "tender-statuses.json"),
+    hsmtDir: path.join(dataDir, config.hsmtDir || "hsmt"),
   };
 }

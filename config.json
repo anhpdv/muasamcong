@@ -11,7 +11,7 @@
   "statusesFile": "tender-statuses.json",
   "scheduleStateFile": "schedule-state.json",
   "initMarkSeenOnly": true,
-  "webPort": 3000,
+  "webPort": 3008,
   "schedule": {
     "enabled": true,
     "timezone": "Asia/Ho_Chi_Minh",

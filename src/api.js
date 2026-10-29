@@ -162,7 +162,7 @@ export function buildSearchPayload({
   ];
 }
 
-async function postJson(url, body, { allowHtml = false, redirects = 0 } = {}) {
+export async function postJson(url, body, { allowHtml = false, redirects = 0 } = {}) {
   const response = await fetch(url, {
     method: "POST",
     headers: requestHeaders(url),
