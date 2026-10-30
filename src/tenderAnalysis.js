@@ -59,28 +59,46 @@ function normalizeSummary(rawSummary) {
   if (!rawSummary) {
     return {
       overview: "",
+      products: [],
+      technicalSpecs: [],
+      keyConditions: [],
       chapter3: [],
       chapter5: [],
-      keyConditions: [],
     };
   }
 
   if (typeof rawSummary === "string") {
     return {
       overview: rawSummary.trim(),
+      products: [],
+      technicalSpecs: [],
+      keyConditions: [],
       chapter3: [],
       chapter5: [],
-      keyConditions: [],
     };
   }
 
+  const products = asStringList(
+    rawSummary.products || rawSummary.sanPham || rawSummary.hangHoa,
+  );
+  const technicalSpecs = asStringList(
+    rawSummary.technicalSpecs ||
+      rawSummary.thongSoKyThuat ||
+      rawSummary.yeuCauKyThuat ||
+      rawSummary.chapter5 ||
+      rawSummary.chuong5,
+  );
+
   return {
     overview: String(rawSummary.overview || rawSummary.tomTat || "").trim(),
-    chapter3: asStringList(rawSummary.chapter3 || rawSummary.chuong3),
-    chapter5: asStringList(rawSummary.chapter5 || rawSummary.chuong5),
+    products,
+    technicalSpecs,
     keyConditions: asStringList(
       rawSummary.keyConditions || rawSummary.dieuKienThenChot || rawSummary.keyPoints,
     ),
+    // giữ tương thích dữ liệu phân tích cũ
+    chapter3: asStringList(rawSummary.chapter3 || rawSummary.chuong3),
+    chapter5: asStringList(rawSummary.chapter5 || rawSummary.chuong5),
   };
 }
 
@@ -110,10 +128,12 @@ function normalizeAnalysis(raw, meta = {}) {
     /** chuỗi phẳng cho tương thích cũ */
     summaryText: [
       summary.overview,
-      summary.chapter3.length ? `Chương III:\n- ${summary.chapter3.join("\n- ")}` : "",
-      summary.chapter5.length ? `Chương V:\n- ${summary.chapter5.join("\n- ")}` : "",
+      summary.products.length ? `Sản phẩm / hàng hóa:\n- ${summary.products.join("\n- ")}` : "",
+      summary.technicalSpecs.length
+        ? `Yêu cầu & thông số kỹ thuật:\n- ${summary.technicalSpecs.join("\n- ")}`
+        : "",
       summary.keyConditions.length
-        ? `Điều kiện then chốt:\n- ${summary.keyConditions.join("\n- ")}`
+        ? `Điều kiện liên quan sản phẩm:\n- ${summary.keyConditions.join("\n- ")}`
         : "",
     ]
       .filter(Boolean)
@@ -282,24 +302,28 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
 
   const system = `Bạn là chuyên gia đấu thầu Việt Nam, hỗ trợ Công ty Hải Nam quyết định tham gia thầu.
 Nhiệm vụ:
-1) ĐỌC TOÀN BỘ Chương III + Chương V → TÓM TẮT có cấu trúc.
-2) ĐỌC KỸ mục "Năng lực Hải Nam" (dữ liệu gốc do người dùng import) → ĐÁNH GIÁ khả thi bằng cách ĐỐI CHIẾU từng yêu cầu HSMT với năng lực đó.
-Bắt buộc: mọi lý do/gaps/recommendation phải dựa trên năng lực Hải Nam đã cho. Không bịa năng lực. Không copy nguyên văn dài.
-Nếu thiếu dữ liệu Hải Nam: verdict=can_xem_xet, gaps phải nêu rõ thiếu gì.
+1) TÓM TẮT lõi HSMT — TẬP TRUNG VÀO SẢN PHẨM/HÀNG HÓA của gói thầu:
+   - Danh mục sản phẩm, số lượng, phạm vi cung cấp/lắp đặt
+   - Yêu cầu sản phẩm, thông số kỹ thuật then chốt
+   - Xuất xứ, chất lượng, bảo hành, chứng nhận liên quan sản phẩm (nếu có)
+   BỎ QUA hoặc chỉ nhắc rất ngắn các thủ tục hành chính/tiêu chuẩn đánh giá chung không gắn sản phẩm.
+2) ĐỌC TOÀN BỘ năng lực Hải Nam → ĐÁNH GIÁ khả thi bằng cách đối chiếu yêu cầu sản phẩm/kỹ thuật với năng lực đó.
+Bắt buộc: không bịa số liệu/năng lực. Không copy nguyên văn dài.
+Nếu thiếu dữ liệu Hải Nam: verdict=can_xem_xet, gaps nêu rõ thiếu gì.
 Trả về ĐÚNG 1 JSON object:
 {
   "summary": {
-    "overview": "2-4 câu tổng quan gói thầu / HSMT",
-    "chapter3": ["điểm chính tiêu chuẩn đánh giá HSDT"],
-    "chapter5": ["điểm chính yêu cầu kỹ thuật / phạm vi / thông số"],
-    "keyConditions": ["điều kiện then chốt: chứng chỉ, kinh nghiệm, bảo hành, thời gian, xuất xứ..."]
+    "overview": "2-3 câu: gói thầu này cung cấp sản phẩm/hàng hóa gì, quy mô chính",
+    "products": ["từng sản phẩm/hạng mục hàng hóa + số lượng/đơn vị nếu có"],
+    "technicalSpecs": ["yêu cầu / thông số kỹ thuật quan trọng của sản phẩm"],
+    "keyConditions": ["điều kiện gắn sản phẩm: xuất xứ, bảo hành, chứng nhận, lắp đặt, thời gian giao..."]
   },
   "feasibility": {
     "score": 0-10,
     "verdict": "phu_hop | can_xem_xet | khong_phu_hop",
-    "reasons": ["so khớp năng lực Hải Nam vs yêu cầu — mỗi ý 1 dòng"],
-    "gaps": ["phần Hải Nam thiếu/ yếu so với HSMT — mỗi ý 1 dòng"],
-    "recommendation": "1-2 câu khuyến nghị hành động cho Hải Nam"
+    "reasons": ["so khớp năng lực Hải Nam với yêu cầu sản phẩm — mỗi ý 1 dòng"],
+    "gaps": ["sản phẩm/ thông số Hải Nam thiếu hoặc yếu — mỗi ý 1 dòng"],
+    "recommendation": "1-2 câu khuyến nghị cho Hải Nam"
   }
 }`;
 
@@ -313,8 +337,8 @@ Trả về ĐÚNG 1 JSON object:
 ${JSON.stringify(buildTenderContext(tender), null, 2)}
 
 ## Năng lực Hải Nam — ĐỌC TOÀN BỘ (${profileDocCount} mục, ${profileText.length.toLocaleString("vi-VN")} ký tự)
-Đây là TOÀN BỘ dữ liệu năng lực do Hải Nam nhập/import (có thể nhiều file/mục).
-Bạn PHẢI quét hết các mục bên dưới trước khi chấm điểm; không bỏ sót mục nào.
+Gồm mục MẶC ĐỊNH (công nghệ & hàng hóa thiết bị) + mọi mục đã import/thêm.
+Bạn PHẢI quét hết tất cả các mục (không bỏ mục mặc định, không bỏ mục bổ sung).
 Đơn vị: ${profile.companyName || "Hải Nam"}
 Ghi chú nội bộ: ${profile.notes || "(không)"}
 
@@ -323,7 +347,9 @@ ${profileForAi || "(CHƯA CÓ — đánh giá thận trọng, bắt buộc ghi t
 ## Nội dung file Chương 3 & Chương 5 (đã trích text)
 ${clip(extracted.combinedText, MAX_DOC_CHARS)}
 
-Yêu cầu: tóm tắt đủ ý quan trọng hai chương; đánh giá khả thi PHẢI đối chiếu trực tiếp với TOÀN BỘ năng lực Hải Nam ở trên.`;
+Yêu cầu:
+- Tóm tắt LÕI theo sản phẩm / yêu cầu sản phẩm / thông số kỹ thuật (không lan man thủ tục).
+- Đánh giá khả thi PHẢI đối chiếu yêu cầu sản phẩm với TOÀN BỘ năng lực Hải Nam.`;
 
   try {
     const { data, model } = await chatJson({ system, user, temperature: 0.2 });

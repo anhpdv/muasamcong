@@ -528,12 +528,16 @@ function createServer(config, paths, auth) {
       );
       if (hainamDocMatch && request.method === "DELETE") {
         const docId = decodeURIComponent(hainamDocMatch[1]);
-        const saved = await deleteHainamDocument(paths, docId, user);
-        sendJson(response, 200, {
-          ok: true,
-          message: "Đã xóa mục năng lực",
-          profile: profilePublicView(saved),
-        });
+        try {
+          const saved = await deleteHainamDocument(paths, docId, user);
+          sendJson(response, 200, {
+            ok: true,
+            message: "Đã xóa mục năng lực",
+            profile: profilePublicView(saved),
+          });
+        } catch (error) {
+          sendJson(response, 400, { error: error.message });
+        }
         return;
       }
 

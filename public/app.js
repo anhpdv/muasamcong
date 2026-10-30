@@ -531,21 +531,32 @@ function renderAnalysisSection(analysis) {
   const summary =
     typeof analysis.summary === "object" && analysis.summary
       ? analysis.summary
-      : { overview: analysis.summaryText || analysis.summary || "", chapter3: [], chapter5: [], keyConditions: [] };
+      : {
+          overview: analysis.summaryText || analysis.summary || "",
+          products: [],
+          technicalSpecs: [],
+          keyConditions: [],
+          chapter3: [],
+          chapter5: [],
+        };
   const f = analysis.feasibility || {};
+  const productSpecs =
+    summary.technicalSpecs?.length
+      ? summary.technicalSpecs
+      : summary.chapter5 || [];
 
   return `
     <div class="analysis-grid" id="analysisSection">
       <div class="analysis-card">
-        <h4>Tóm tắt</h4>
+        <h4>Tóm tắt · Sản phẩm gói thầu</h4>
         ${
           summary.overview
             ? `<p class="analysis-overview">${escapeHtml(summary.overview)}</p>`
             : `<p class="doc-empty">Chưa có tóm tắt.</p>`
         }
-        ${renderBulletBlock("Chương III · Tiêu chuẩn đánh giá", summary.chapter3)}
-        ${renderBulletBlock("Chương V · Yêu cầu kỹ thuật", summary.chapter5)}
-        ${renderBulletBlock("Điều kiện then chốt", summary.keyConditions)}
+        ${renderBulletBlock("Sản phẩm / hàng hóa", summary.products)}
+        ${renderBulletBlock("Yêu cầu & thông số kỹ thuật", productSpecs)}
+        ${renderBulletBlock("Điều kiện gắn sản phẩm", summary.keyConditions)}
       </div>
       <div class="analysis-card analysis-card--feasibility">
         <h4>Đánh giá độ khả thi</h4>
@@ -1048,18 +1059,23 @@ function renderHainamDocs(documents = []) {
   elements.hainamDocsList.innerHTML = documents
     .map(
       (doc) => `
-        <article class="hainam-doc" data-id="${escapeAttr(doc.id)}">
+        <article class="hainam-doc${doc.isDefault ? " hainam-doc--default" : ""}" data-id="${escapeAttr(doc.id)}">
           <div>
-            <h4 class="hainam-doc__title">${escapeHtml(doc.title)}</h4>
+            <h4 class="hainam-doc__title">
+              ${escapeHtml(doc.title)}
+              ${doc.isDefault ? `<span class="hainam-doc__badge">Mặc định</span>` : ""}
+            </h4>
             <p class="hainam-doc__meta">
-              ${escapeHtml(doc.source || "manual")}
+              ${doc.isDefault ? "Luôn dùng khi đánh giá" : escapeHtml(doc.source || "manual")}
               · ${(doc.chars || 0).toLocaleString("vi-VN")} ký tự
               ${doc.updatedAt ? ` · ${escapeHtml(formatDate(doc.updatedAt))}` : ""}
             </p>
           </div>
-          <button class="btn btn--ghost btn--sm" type="button" data-delete-doc="${escapeAttr(doc.id)}">
-            Xóa
-          </button>
+          ${
+            doc.isDefault
+              ? `<span class="hainam-doc__locked">Không xóa</span>`
+              : `<button class="btn btn--ghost btn--sm" type="button" data-delete-doc="${escapeAttr(doc.id)}">Xóa</button>`
+          }
           <p class="hainam-doc__preview">${escapeHtml(doc.preview || "")}${(doc.chars || 0) > 160 ? "…" : ""}</p>
         </article>
       `,
@@ -1074,12 +1090,9 @@ function fillHainamForm(profile, ai) {
     ? `Cập nhật ${formatDate(profile.updatedAt)}${profile.updatedBy ? ` · ${profile.updatedBy}` : ""}`
     : "Chưa lưu lần nào";
   const docCount = profile?.documentCount || profile?.documents?.length || 0;
-  elements.hainamSummary.textContent = profile?.hasData
-    ? `Đã sẵn sàng đánh giá · ${docCount} mục · ${profile.charCount.toLocaleString("vi-VN")} ký tự (AI đọc toàn bộ).`
-    : "Chưa có dữ liệu. Thêm nhiều mục text/file — AI sẽ quét hết khi đánh giá thầu.";
-  elements.hainamMeta.innerHTML = profile?.hasData
-    ? `<strong>${docCount} mục trong kho</strong><br>${escapeHtml(updated)} · ${profile.charCount.toLocaleString("vi-VN")} ký tự · AI đọc toàn bộ khi đánh giá.`
-    : `<strong>Trống</strong><br>${escapeHtml(updated)}. Thêm nội dung trước khi lấy thông tin mời thầu.`;
+  const extraCount = profile?.extraCount ?? Math.max(0, docCount - 1);
+  elements.hainamSummary.textContent = `Năng lực mặc định luôn bật · đã thêm ${extraCount} mục · tổng ${profile.charCount.toLocaleString("vi-VN")} ký tự — AI đọc toàn bộ khi đánh giá.`;
+  elements.hainamMeta.innerHTML = `<strong>${docCount} mục (1 mặc định + ${extraCount} bổ sung)</strong><br>${escapeHtml(updated)} · ${profile.charCount.toLocaleString("vi-VN")} ký tự · Đánh giá thầu quét hết kho.`;
   elements.hainamAiBadge.textContent = ai?.configured
     ? `AI: ${ai.model || "đã cấu hình"}`
     : "AI: chưa cấu hình (.env)";

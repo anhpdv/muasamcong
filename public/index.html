@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="/logo-hainam.png" type="image/png" />
-    <link rel="stylesheet" href="/styles.css?v=12" />
+    <link rel="stylesheet" href="/styles.css?v=14" />
   </head>
   <body>
     <header class="app-header">
@@ -233,14 +233,14 @@
               </label>
               <select id="hainamImportMode" aria-label="Chế độ import">
                 <option value="append">Thêm vào kho</option>
-                <option value="replace">Xóa hết & thay bằng file</option>
+                <option value="replace">Thay các mục bổ sung (giữ mặc định)</option>
               </select>
               <button id="hainamImportBtn" class="btn btn--ghost" type="button">Import file</button>
             </div>
             <button id="hainamAddTextBtn" class="btn btn--primary" type="button">Thêm vào kho</button>
           </div>
           <p class="hainam-import__hint">
-            Hỗ trợ nhiều file .txt / .md / .csv / .json. Mỗi lần thêm = 1 mục trong kho. Khi đánh giá thầu, AI quét toàn bộ các mục.
+            Có năng lực mặc định (công nghệ & thiết bị). Thêm text/file bao nhiêu cũng được — khi đánh giá thầu AI đọc toàn bộ mặc định + các mục đã thêm.
           </p>
         </div>
 
@@ -249,8 +249,8 @@
             <h3>Trạng thái kho</h3>
             <p id="hainamMeta" class="hainam-stat__meta">Chưa có dữ liệu</p>
             <ul class="hainam-stat__list">
-              <li>Được phép nhập / import nhiều mục</li>
-              <li>AI đọc <strong>toàn bộ</strong> kho khi đánh giá thầu</li>
+              <li>Mặc định luôn giữ — không bị xóa khi import</li>
+              <li>Thêm nhiều file/text → AI đọc <strong>toàn bộ</strong></li>
               <li>Không cần gộp một file — cứ thêm dần</li>
             </ul>
           </article>
@@ -289,6 +289,6 @@
 
     <div id="toast" class="toast" hidden></div>
 
-    <script src="/app.js?v=12" type="module"></script>
+    <script src="/app.js?v=14" type="module"></script>
   </body>
 </html>
