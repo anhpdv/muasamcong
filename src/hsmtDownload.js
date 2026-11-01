@@ -679,7 +679,8 @@ export async function downloadHsmtChapters(config, tender, paths, options = {}) 
   }
 
   const result = {
-    ok: errors.length === 0 && saved.length > 0,
+    // Có file lõi là thành công; lỗi file phụ (rar/bản vẽ) không chặn tóm tắt
+    ok: saved.length > 0,
     notifyNo,
     downloadedAt: new Date().toISOString(),
     chapters: {

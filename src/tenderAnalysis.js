@@ -205,6 +205,11 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
   }
 
   const localFiles = resolveLocalHsmtFiles(paths, hsmtResult);
+  const profile = await loadHainamProfile(paths);
+  const profileText = getFullCapabilityText(profile).trim();
+  const profileDocCount = profile.documents?.length || 0;
+  const ai = getAiConfig();
+
   if (!localFiles.length) {
     const empty = normalizeAnalysis(
       {
@@ -227,17 +232,58 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
     return saveTenderAnalysis(paths, notifyNo, empty);
   }
 
-  const { selected: analysisFiles, skipped } = await selectHsmtFilesForAnalysis(localFiles);
-  const extracted = await extractPdfTexts(analysisFiles);
-  if (skipped.length) {
-    extracted.warnings = [
-      ...(extracted.warnings || []),
-      `Đã bỏ ${skipped.length} file phụ/quá lớn khỏi AI (bản vẽ, archive, PDF rất nặng) — vẫn giữ file lõi để tóm tắt.`,
-    ];
+  // Báo sớm nếu thiếu key — vẫn tiếp tục đọc file để UI có cảnh báo đầy đủ
+  if (!ai.configured) {
+    const missingKey = normalizeAnalysis(
+      {
+        summary: {
+          overview:
+            "Server chưa cấu hình AI (thiếu OPENAI_API_KEY trong .env trên máy chạy prod). File HSMT đã tải nhưng chưa gọi được model để tóm tắt.",
+          products: [],
+          technicalSpecs: [],
+          keyConditions: [],
+        },
+        feasibility: {
+          score: null,
+          verdict: "can_xem_xet",
+          reasons: ["OPENAI_API_KEY / AI_API_KEY chưa được set trên môi trường chạy server."],
+          gaps: profileText ? [] : ["Thiếu dữ liệu năng lực Hải Nam"],
+          recommendation:
+            "Thêm OPENAI_API_KEY (+ OPENAI_BASE_URL, OPENAI_MODEL nếu dùng Vilao) vào .env trên server, restart service, rồi bấm lại “Lấy thông tin mời thầu”.",
+        },
+      },
+      {
+        warnings: ["AI chưa cấu hình trên server"],
+        model: null,
+        profileUsed: Boolean(profileText),
+        sourceFiles: sourceFilesMeta(localFiles),
+        ok: false,
+        error: "missing_ai_key",
+      },
+    );
+    return saveTenderAnalysis(paths, notifyNo, missingKey);
   }
-  const profile = await loadHainamProfile(paths);
-  const profileText = getFullCapabilityText(profile).trim();
-  const profileDocCount = profile.documents?.length || 0;
+
+  let analysisFiles = localFiles;
+  let extracted = { combinedText: "", warnings: [], files: [] };
+  try {
+    const selected = await selectHsmtFilesForAnalysis(localFiles);
+    analysisFiles = selected.selected;
+    extracted = await extractPdfTexts(analysisFiles);
+    if (selected.skipped.length) {
+      extracted.warnings = [
+        ...(extracted.warnings || []),
+        `Đã bỏ ${selected.skipped.length} file phụ/quá lớn khỏi AI (bản vẽ, archive, PDF rất nặng) — vẫn giữ file lõi để tóm tắt.`,
+      ];
+    }
+  } catch (error) {
+    extracted = {
+      combinedText: "",
+      warnings: [`Lỗi đọc tài liệu: ${error.message}`],
+      files: [],
+    };
+  }
+
   const warnings = [...(extracted.warnings || [])];
 
   if (!profileText) {
@@ -248,37 +294,6 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
     warnings.push(
       `Năng lực Hải Nam rất dài (${profileText.length.toLocaleString("vi-VN")} ký tự / ${profileDocCount} mục). Đã gửi ${MAX_PROFILE_CHARS.toLocaleString("vi-VN")} ký tự đầu — nên rút gọn nếu thiếu ý quan trọng.`,
     );
-  }
-
-  const ai = getAiConfig();
-  if (!ai.configured) {
-    const fallback = normalizeAnalysis(
-      {
-        summary: {
-          overview:
-            "Chưa cấu hình AI (OPENAI_API_KEY). Đã lấy nội dung HSMT nhưng chưa tạo được tóm tắt.",
-          chapter3: [],
-          chapter5: [],
-          keyConditions: [],
-        },
-        feasibility: {
-          score: null,
-          verdict: "can_xem_xet",
-          reasons: ["Chưa cấu hình OPENAI_API_KEY trong .env."],
-          gaps: profileText ? [] : ["Thiếu dữ liệu năng lực Hải Nam"],
-          recommendation: "Cấu hình .env, import dữ liệu Hải Nam, rồi bấm lại nút lấy thông tin mời thầu.",
-        },
-      },
-      {
-        warnings,
-        model: null,
-        profileUsed: Boolean(profileText),
-        sourceFiles: sourceFilesMeta(analysisFiles),
-        ok: false,
-        error: "missing_ai_key",
-      },
-    );
-    return saveTenderAnalysis(paths, notifyNo, fallback);
   }
 
   if (!extracted.combinedText?.trim()) {

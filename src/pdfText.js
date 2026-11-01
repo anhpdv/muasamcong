@@ -193,41 +193,56 @@ export async function extractPdfTexts(files) {
   }
 
   if (pdfFiles.length) {
-    const stdout = await runPython(
-      [EXTRACT_SCRIPT_PATH],
-      JSON.stringify({ files: pdfFiles }),
-    );
-    let parsed;
     try {
-      parsed = JSON.parse(stdout);
-    } catch {
-      // MuPDF đôi khi ghi warning vào stdout trước JSON
-      const start = stdout.indexOf("{");
-      const end = stdout.lastIndexOf("}");
-      if (start >= 0 && end > start) {
-        parsed = JSON.parse(stdout.slice(start, end + 1));
-        warnings.push("PyMuPDF có cảnh báo trên stdout — đã bỏ qua phần không phải JSON.");
-      } else {
-        throw new Error(`Không parse được kết quả đọc PDF: ${stdout.slice(0, 180)}`);
+      const stdout = await runPython(
+        [EXTRACT_SCRIPT_PATH],
+        JSON.stringify({ files: pdfFiles }),
+      );
+      let parsed;
+      try {
+        parsed = JSON.parse(stdout);
+      } catch {
+        // MuPDF đôi khi ghi warning vào stdout trước JSON
+        const start = stdout.indexOf("{");
+        const end = stdout.lastIndexOf("}");
+        if (start >= 0 && end > start) {
+          parsed = JSON.parse(stdout.slice(start, end + 1));
+          warnings.push("PyMuPDF có cảnh báo trên stdout — đã bỏ qua phần không phải JSON.");
+        } else {
+          throw new Error(`Không parse được kết quả đọc PDF: ${stdout.slice(0, 180)}`);
+        }
       }
-    }
 
-    for (const file of parsed.files || []) {
-      outFiles.push(file);
-      if (file.error) {
-        warnings.push(`${file.name}: ${file.error}`);
-        continue;
+      for (const file of parsed.files || []) {
+        outFiles.push(file);
+        if (file.error) {
+          warnings.push(`${file.name}: ${file.error}`);
+          continue;
+        }
+        if (file.isScanLikely || !file.text?.trim()) {
+          warnings.push(
+            `${file.name}: PDF dạng scan/ảnh, ít hoặc không có text (cần OCR để phân tích sâu).`,
+          );
+          parts.push(
+            `\n### ${file.chapter || ""} · ${file.name}\n[File scan/ảnh — không trích được text đầy đủ. Pages=${file.pages}]`,
+          );
+          continue;
+        }
+        parts.push(`\n### ${file.chapter || ""} · ${file.name}\n${file.text}`);
       }
-      if (file.isScanLikely || !file.text?.trim()) {
-        warnings.push(
-          `${file.name}: PDF dạng scan/ảnh, ít hoặc không có text (cần OCR để phân tích sâu).`,
-        );
-        parts.push(
-          `\n### ${file.chapter || ""} · ${file.name}\n[File scan/ảnh — không trích được text đầy đủ. Pages=${file.pages}]`,
-        );
-        continue;
+    } catch (error) {
+      // Không làm mất text đã đọc từ .txt — vẫn cho AI tóm tắt phần còn lại
+      warnings.push(
+        `Không đọc được PDF/Office (Python/PyMuPDF): ${error.message}. Vẫn dùng các file text đã có nếu có.`,
+      );
+      for (const file of pdfFiles) {
+        outFiles.push({
+          name: file.name,
+          chapter: file.chapter,
+          path: file.path,
+          error: error.message,
+        });
       }
-      parts.push(`\n### ${file.chapter || ""} · ${file.name}\n${file.text}`);
     }
   }
 

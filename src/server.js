@@ -430,11 +430,13 @@ function createServer(config, paths, auth) {
         const body = await readBody(request).catch(() => ({}));
         const force = Boolean(body?.force) || url.searchParams.get("force") === "1";
         const result = await downloadHsmtChapters(config, tender, paths, { force });
-        const downloadOk = Boolean(result.ok || result.skipped);
+        const hasFiles = (result.files?.length || 0) > 0;
+        const downloadOk = Boolean(result.ok || result.skipped || hasFiles);
 
         let analysis = null;
         let analysisError = null;
-        if (downloadOk) {
+        // Phân tích khi đã có file (kể cả tải một phần lỗi archive/PDF phụ)
+        if (hasFiles || downloadOk) {
           try {
             analysis = await analyzeTenderInvite(config, tender, paths, result, {
               force: true,
@@ -447,13 +449,17 @@ function createServer(config, paths, auth) {
 
         const parts = [
           result.skipped
-            ? `Đã có sẵn ${result.files?.length || 0} file Chương 3/5`
-            : result.ok
-              ? `Đã tải ${result.files?.length || 0} file Chương 3/5`
+            ? `Đã có sẵn ${result.files?.length || 0} file HSMT`
+            : hasFiles
+              ? `Đã tải ${result.files?.length || 0} file HSMT`
               : result.error || "Tải HSMT thất bại",
         ];
-        if (analysis?.summary) {
+        if (analysis?.error === "missing_ai_key") {
+          parts.push("chưa cấu hình OPENAI_API_KEY trên server");
+        } else if (analysis?.ok && analysis?.summary) {
           parts.push("đã tạo tóm tắt & đánh giá khả thi");
+        } else if (analysis?.summary?.overview) {
+          parts.push("đã chạy phân tích (có cảnh báo)");
         } else if (analysisError) {
           parts.push(`AI: ${analysisError}`);
         }
@@ -464,6 +470,9 @@ function createServer(config, paths, auth) {
           hsmt: decorateHsmtResult(result, tender.id || tender.notifyNo),
           analysis,
           analysisError,
+          ai: getAiConfig().configured
+            ? { configured: true, model: getAiConfig().model }
+            : { configured: false },
         });
         return;
       }
