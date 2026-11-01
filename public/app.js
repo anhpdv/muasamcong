@@ -799,6 +799,10 @@ async function fetchHsmtInvite(id, { force = false } = {}) {
     showToast(result.message || "Đã lấy thông tin mời thầu");
     if (result.analysisError) {
       showToast(result.analysisError);
+    } else if (result.ai && result.ai.configured === false) {
+      showToast("Server chưa cấu hình OPENAI_API_KEY — chưa tóm tắt được bằng AI.");
+    } else if (result.analysis?.error === "missing_ai_key") {
+      showToast("Thiếu OPENAI_API_KEY trên server — chưa gọi được AI.");
     }
     return result;
   } catch (error) {
