@@ -68,8 +68,84 @@ function runPython(args, input) {
   });
 }
 
+const TEXT_EXTS = new Set([".txt", ".html", ".htm", ".md", ".csv", ".json"]);
+const OFFICE_OR_PDF_EXTS = new Set([".pdf", ".docx", ".xlsx", ".doc", ".xls"]);
+/** Giới hạn file đưa vào AI — tránh bản vẽ/PDF cực lớn. */
+const MAX_ANALYSIS_FILE_BYTES = 12 * 1024 * 1024;
+
+function isTextSidecar(filePath) {
+  return TEXT_EXTS.has(path.extname(filePath || "").toLowerCase());
+}
+
+function analysisPriority(file) {
+  const name = `${file.name || ""} ${file.chapter || ""}`.toLowerCase();
+  let score = 0;
+  if (file.chapter === "chuong-3" || /tiêu chuẩn|đánh giá|eval/.test(name)) score += 30;
+  if (file.chapter === "chuong-5" || /yêu cầu|tham chiếu|kỹ thuật|tor/.test(name)) score += 30;
+  if (file.chapter === "hsmt-full") score += 20;
+  if (/\.txt$/i.test(file.name || "")) score += 15;
+  if (/\.pdf$/i.test(file.name || "")) score += 10;
+  if (/\.docx?$/i.test(file.name || "")) score += 8;
+  if (/\.xlsx?$/i.test(file.name || "")) score += 8;
+  if (/bản vẽ|ban ve|drawing|\.rar|\.zip/i.test(name)) score -= 50;
+  return score;
+}
+
 /**
- * Trích text từ danh sách file PDF local.
+ * Chọn file lõi để AI đọc (bỏ archive / file quá lớn khi đã có tài liệu chính).
+ */
+export async function selectHsmtFilesForAnalysis(files) {
+  const existing = [];
+  for (const file of files || []) {
+    try {
+      const stat = await fs.stat(file.path);
+      existing.push({ ...file, bytes: stat.size });
+    } catch {
+      // skip missing
+    }
+  }
+
+  const ranked = existing
+    .filter((file) => {
+      const name = (file.name || "").toLowerCase();
+      if (/\.(rar|zip|7z)$/i.test(name)) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) => analysisPriority(b) - analysisPriority(a) || a.bytes - b.bytes);
+
+  const selected = [];
+  let total = 0;
+  for (const file of ranked) {
+    const ext = path.extname(file.name || file.path || "").toLowerCase();
+    const isOfficeOrPdf = OFFICE_OR_PDF_EXTS.has(ext) || !ext;
+    if (file.bytes > MAX_ANALYSIS_FILE_BYTES && isOfficeOrPdf && selected.length > 0) {
+      continue;
+    }
+    if (file.bytes > MAX_ANALYSIS_FILE_BYTES * 2) {
+      continue;
+    }
+    selected.push(file);
+    total += file.bytes;
+    if (selected.length >= 10 || total > MAX_ANALYSIS_FILE_BYTES * 3) {
+      break;
+    }
+  }
+
+  // nếu lọc hết (chỉ còn file lớn) — giữ 1 file nhỏ nhất có ưu tiên cao
+  if (!selected.length && ranked.length) {
+    selected.push(ranked[0]);
+  }
+
+  return {
+    selected,
+    skipped: existing.filter((file) => !selected.includes(file)),
+  };
+}
+
+/**
+ * Trích text từ PDF local + file .txt/.html đã lưu từ form HSMT (không có PDF).
  * @param {{path:string, chapter?:string, name?:string}[]} files
  */
 export async function extractPdfTexts(files) {
@@ -84,37 +160,80 @@ export async function extractPdfTexts(files) {
   }
 
   if (!existing.length) {
-    return { ok: true, files: [], combinedText: "", warnings: ["Không có file PDF để đọc"] };
+    return { ok: true, files: [], combinedText: "", warnings: ["Không có file để đọc"] };
   }
 
-  const stdout = await runPython(
-    [EXTRACT_SCRIPT_PATH],
-    JSON.stringify({ files: existing }),
-  );
-  const parsed = JSON.parse(stdout);
+  const textFiles = existing.filter((file) => isTextSidecar(file.path));
+  const pdfFiles = existing.filter((file) => !isTextSidecar(file.path));
+
   const parts = [];
   const warnings = [];
+  const outFiles = [];
 
-  for (const file of parsed.files || []) {
-    if (file.error) {
-      warnings.push(`${file.name}: ${file.error}`);
-      continue;
+  for (const file of textFiles) {
+    try {
+      const text = await fs.readFile(file.path, "utf8");
+      outFiles.push({
+        name: file.name,
+        chapter: file.chapter,
+        path: file.path,
+        text,
+        pages: 1,
+        isScanLikely: false,
+      });
+      if (text?.trim()) {
+        parts.push(`\n### ${file.chapter || ""} · ${file.name}\n${text}`);
+      } else {
+        warnings.push(`${file.name}: file text rỗng`);
+      }
+    } catch (error) {
+      warnings.push(`${file.name}: ${error.message}`);
+      outFiles.push({ name: file.name, chapter: file.chapter, error: error.message });
     }
-    if (file.isScanLikely || !file.text?.trim()) {
-      warnings.push(
-        `${file.name}: PDF dạng scan/ảnh, ít hoặc không có text (cần OCR để phân tích sâu).`,
-      );
-      parts.push(
-        `\n### ${file.chapter || ""} · ${file.name}\n[File scan/ảnh — không trích được text đầy đủ. Pages=${file.pages}]`,
-      );
-      continue;
+  }
+
+  if (pdfFiles.length) {
+    const stdout = await runPython(
+      [EXTRACT_SCRIPT_PATH],
+      JSON.stringify({ files: pdfFiles }),
+    );
+    let parsed;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch {
+      // MuPDF đôi khi ghi warning vào stdout trước JSON
+      const start = stdout.indexOf("{");
+      const end = stdout.lastIndexOf("}");
+      if (start >= 0 && end > start) {
+        parsed = JSON.parse(stdout.slice(start, end + 1));
+        warnings.push("PyMuPDF có cảnh báo trên stdout — đã bỏ qua phần không phải JSON.");
+      } else {
+        throw new Error(`Không parse được kết quả đọc PDF: ${stdout.slice(0, 180)}`);
+      }
     }
-    parts.push(`\n### ${file.chapter || ""} · ${file.name}\n${file.text}`);
+
+    for (const file of parsed.files || []) {
+      outFiles.push(file);
+      if (file.error) {
+        warnings.push(`${file.name}: ${file.error}`);
+        continue;
+      }
+      if (file.isScanLikely || !file.text?.trim()) {
+        warnings.push(
+          `${file.name}: PDF dạng scan/ảnh, ít hoặc không có text (cần OCR để phân tích sâu).`,
+        );
+        parts.push(
+          `\n### ${file.chapter || ""} · ${file.name}\n[File scan/ảnh — không trích được text đầy đủ. Pages=${file.pages}]`,
+        );
+        continue;
+      }
+      parts.push(`\n### ${file.chapter || ""} · ${file.name}\n${file.text}`);
+    }
   }
 
   return {
     ok: true,
-    files: parsed.files || [],
+    files: outFiles,
     combinedText: parts.join("\n\n").trim(),
     warnings,
   };

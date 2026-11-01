@@ -469,29 +469,39 @@ function renderFileList(files, emptyText) {
 
 function renderHsmtFiles(hsmt) {
   if (!hsmt) {
-    return `<p class="doc-empty">Chưa lấy thông tin mời thầu. Bấm nút bên trên để tải Chương 3 và Chương 5.</p>`;
+    return `<p class="doc-empty">Chưa lấy thông tin mời thầu. Bấm nút bên trên để tải Tiêu chuẩn đánh giá HSDT và Yêu cầu kỹ thuật.</p>`;
   }
 
   if (!hsmt.ok && !(hsmt.files || []).length) {
-    return `<p class="doc-empty">${escapeHtml(hsmt.error || "Không tải được Chương 3/5.")}</p>`;
+    return `<p class="doc-empty">${escapeHtml(hsmt.error || "Không tải được nội dung HSMT.")}</p>`;
   }
 
   const groups = [
-    { key: "chuong-3", title: "Chương III · Tiêu chuẩn đánh giá" },
-    { key: "chuong-5", title: "Chương V · Yêu cầu kỹ thuật" },
+    { key: "chuong-3", title: "Tiêu chuẩn đánh giá HSDT" },
+    { key: "chuong-5", title: "Yêu cầu về kỹ thuật / TOR" },
+    { key: "hsmt-full", title: "HSMT đầy đủ (offline)" },
   ];
 
-  return groups
+  const sections = groups
     .map((group) => {
       const files = (hsmt.files || []).filter((file) => file.chapter === group.key);
+      if (!files.length) {
+        return "";
+      }
       return `
         <div class="doc-subsection">
           <h4>${escapeHtml(group.title)}</h4>
-          ${renderFileList(files, "Không có file đính kèm trong chương này.")}
+          ${renderFileList(files, "Không có nội dung.")}
         </div>
       `;
     })
+    .filter(Boolean)
     .join("");
+
+  if (!sections) {
+    return `<p class="doc-empty">${escapeHtml(hsmt.error || "Không tìm thấy tiêu chuẩn đánh giá HSDT / yêu cầu kỹ thuật.")}</p>`;
+  }
+  return sections;
 }
 
 function renderBulletBlock(title, items) {
@@ -514,7 +524,7 @@ function renderAnalysisSection(analysis) {
       <div class="analysis-grid" id="analysisSection">
         <div class="analysis-card">
           <h4>Tóm tắt</h4>
-          <p class="doc-empty">Chưa có. Bấm “Lấy thông tin mời thầu” để AI đọc Chương 3 & 5.</p>
+          <p class="doc-empty">Chưa có. Bấm “Lấy thông tin mời thầu” để AI đọc tiêu chuẩn đánh giá HSDT & yêu cầu kỹ thuật.</p>
         </div>
         <div class="analysis-card">
           <h4>Đánh giá độ khả thi</h4>
@@ -593,7 +603,7 @@ function renderHsmtInvitePanel(tenderId, hsmt, analysis = null) {
       <div class="doc-panel__head">
         <div>
           <h3>Thông tin mời thầu</h3>
-          <p class="doc-summary">Tải Chương 3 & 5, AI tóm tắt và đánh giá khả thi theo dữ liệu Hải Nam.</p>
+          <p class="doc-summary">Tải tiêu chuẩn đánh giá HSDT & yêu cầu kỹ thuật, AI tóm tắt và đánh giá khả thi theo dữ liệu Hải Nam.</p>
         </div>
         <div class="doc-panel__actions">
           <button class="btn btn--primary" type="button" id="fetchHsmtBtn" data-force="${hasFiles ? "1" : "0"}">
@@ -709,7 +719,7 @@ function renderDetail(item, documents) {
           : ""
       }
     </div>
-    <p class="detail-hint">Bấm “Lấy thông tin mời thầu” để tải Chương 3 & 5, tạo tóm tắt và đánh giá khả thi. Quét thầu không tự tải file.</p>
+    <p class="detail-hint">Bấm “Lấy thông tin mời thầu” để tải tiêu chuẩn đánh giá HSDT & yêu cầu kỹ thuật, tạo tóm tắt và đánh giá khả thi. Quét thầu không tự tải file.</p>
     </div>
   `;
 
@@ -770,7 +780,7 @@ async function fetchHsmtInvite(id, { force = false } = {}) {
     btn.textContent = "Đang tải & phân tích...";
   }
   if (body) {
-    body.innerHTML = `<p class="doc-loading">Đang tải Chương 3 & 5 từ muasamcong...</p>`;
+    body.innerHTML = `<p class="doc-loading">Đang tải tiêu chuẩn đánh giá HSDT & yêu cầu kỹ thuật từ muasamcong...</p>`;
   }
   if (analysisSection) {
     analysisSection.innerHTML = `

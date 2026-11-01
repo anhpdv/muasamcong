@@ -6,24 +6,33 @@ import { buildFileDownloadUrl } from "./normalize.js";
 const HSMT_PATH =
   "/o/egp-portal-contractor-selection-v2/services/lcnt_tbmt_hsmt";
 
-/** Chương III = C3; Chương V thường gắn chapterCode P2 (Yêu cầu kỹ thuật). */
-const CHAPTER_RULES = {
+/**
+ * Không gắn cứng “Chương III / V”.
+ * Phân loại theo nội dung: Tiêu chuẩn đánh giá HSDT vs Yêu cầu kỹ thuật (hoặc Điều khoản tham chiếu / TOR).
+ * Giữ folder chuong-3 / chuong-5 để tương thích UI & API cũ.
+ */
+const SECTION_RULES = {
   "chuong-3": {
-    label: "Chương III",
-    matchChapter: (code) => code === "C3",
-    matchForm: (formCode, name = "") =>
-      formCode === "C3" || /chương\s*iii\b|chuong\s*iii\b|chương\s*3\b/i.test(name),
+    label: "Tiêu chuẩn đánh giá HSDT",
+    folder: "chuong-3",
   },
   "chuong-5": {
-    label: "Chương V",
-    matchChapter: (code) => code === "P2" || code === "C5",
-    matchForm: (formCode, name = "") =>
-      formCode === "BD.DT.02.0792" ||
-      /chương\s*v\b|chuong\s*v\b|chương\s*5\b|yêu cầu về kỹ thuật|yeu cau ve ky thuat/i.test(
-        name,
-      ),
+    label: "Yêu cầu về kỹ thuật",
+    folder: "chuong-5",
+  },
+  "hsmt-full": {
+    label: "HSMT đầy đủ (offline)",
+    folder: "hsmt-full",
   },
 };
+
+const EVAL_NAME_RE =
+  /ti[eê]u\s*chu[aả]n\s*[đd][aá]nh\s*gi[aá]|[đd][aá]nh\s*gi[aá].{0,20}(e-)?hsdt|ch[uư][ơo]ng\s*iii\b|chuong\s*iii\b|ch[uư][ơo]ng\s*3\b/i;
+
+const TECH_NAME_RE =
+  /y[eê]u\s*c[aầ]u\s*(v[eề]\s*)?k[ỹy]\s*thu[aậ]t|[đd]i[eề]u\s*kho[aả]n\s*tham\s*chi[eế]u|th[oô]ng\s*s[oố]\s*k[ỹy]\s*thu[aậ]t|ch[uư][ơo]ng\s*v\b|chuong\s*v\b|ch[uư][ơo]ng\s*5\b|ph[aầ]n\s*2\s*[:.\-–]?\s*y[eê]u\s*c[aầ]u|tor\b/i;
+
+const MIN_TEXT_CHARS = 80;
 
 function safeFileName(name, fallback = "file.bin") {
   const cleaned = String(name || fallback)
@@ -53,6 +62,20 @@ function parseMaybeJson(value) {
   } catch {
     return null;
   }
+}
+
+function stripHtml(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function collectFileRefs(node, files = [], seen = new Set()) {
@@ -103,25 +126,231 @@ function collectFileRefs(node, files = [], seen = new Set()) {
   return files;
 }
 
-function confNameByFormCode(confList, formCode) {
-  if (!formCode || !Array.isArray(confList)) {
+function flattenEvalTable(rows, lines = [], depth = 0) {
+  if (!Array.isArray(rows)) {
+    return lines;
+  }
+  for (const row of rows) {
+    if (!row || typeof row !== "object") {
+      continue;
+    }
+    const pos = row.pos || row.position || "";
+    const content = stripHtml(row.content || row.name || row.title || "");
+    const meta = [
+      row.minValue != null && row.minValue !== "" ? `min=${row.minValue}` : "",
+      row.maxValue != null && row.maxValue !== "" ? `max=${row.maxValue}` : "",
+      row.qty != null && row.qty !== "" ? `sl=${row.qty}` : "",
+      row.pointDetail ? stripHtml(String(row.pointDetail)) : "",
+    ]
+      .filter(Boolean)
+      .join(", ");
+    if (content || meta) {
+      const indent = "  ".repeat(Math.min(depth, 6));
+      lines.push(`${indent}${[pos, content, meta ? `(${meta})` : ""].filter(Boolean).join(" — ")}`);
+    }
+    if (Array.isArray(row.children) && row.children.length) {
+      flattenEvalTable(row.children, lines, depth + 1);
+    }
+  }
+  return lines;
+}
+
+/** Biến formValue JSON/HTML thành text để AI đọc khi không có PDF. */
+export function formValueToText(formValue, confName = "") {
+  const parts = [];
+  if (confName) {
+    parts.push(`# ${confName}`);
+  }
+
+  if (formValue == null) {
     return "";
   }
-  const hit = confList.find((item) => item.code === formCode || item.pcode === formCode);
+
+  if (typeof formValue === "string") {
+    const parsed = parseMaybeJson(formValue);
+    if (parsed) {
+      return formValueToText(parsed, confName);
+    }
+    const text = /</.test(formValue) ? stripHtml(formValue) : formValue.trim();
+    if (text) {
+      parts.push(text);
+    }
+    return parts.join("\n\n").trim();
+  }
+
+  if (typeof formValue !== "object") {
+    return "";
+  }
+
+  if (typeof formValue.content === "string" && formValue.content.trim()) {
+    parts.push(
+      /</.test(formValue.content) ? stripHtml(formValue.content) : formValue.content.trim(),
+    );
+  }
+  if (typeof formValue.html === "string" && formValue.html.trim()) {
+    parts.push(stripHtml(formValue.html));
+  }
+  if (typeof formValue.description === "string" && formValue.description.trim()) {
+    parts.push(stripHtml(formValue.description));
+  }
+
+  if (Array.isArray(formValue.Table) && formValue.Table.length) {
+    const tableLines = flattenEvalTable(formValue.Table);
+    if (tableLines.length) {
+      parts.push("Bảng tiêu chí:\n" + tableLines.join("\n"));
+    }
+  }
+
+  // Các field text còn lại (bỏ file / id)
+  for (const [key, value] of Object.entries(formValue)) {
+    if (
+      ["file", "files", "sharedFiles", "attachFiles", "fileOther1", "fileOther2", "fileOther3", "fileOther4", "fileOther5", "Table", "content", "html", "description"].includes(
+        key,
+      )
+    ) {
+      continue;
+    }
+    if (typeof value === "string" && value.trim().length >= 20 && !/^[0-9a-f-]{36}$/i.test(value)) {
+      const text = /</.test(value) ? stripHtml(value) : value.trim();
+      if (text.length >= 20) {
+        parts.push(`${key}: ${text}`);
+      }
+    }
+  }
+
+  return parts.join("\n\n").trim();
+}
+
+function confByCode(confList, code) {
+  if (!code || !Array.isArray(confList)) {
+    return null;
+  }
+  return confList.find((item) => item.code === code || item.pcode === code) || null;
+}
+
+function confNameByFormCode(confList, formCode) {
+  const hit = confByCode(confList, formCode);
   return hit?.name || hit?.tempName || "";
 }
 
-function classifyChapter(dto, confList) {
+/**
+ * Phân loại theo tên mục/chương trước, rồi mới tới mã C3/P2/C5.
+ * Tránh phụ thuộc formCode cứng (BD.DT.02.0792, …).
+ */
+export function classifyChapter(dto, confList) {
   const chapterCode = String(dto.chapterCode || "");
   const formCode = String(dto.formCode || "");
-  const confName = confNameByFormCode(confList, formCode) || confNameByFormCode(confList, chapterCode);
+  const formName = confNameByFormCode(confList, formCode);
+  const chapterName = confNameByFormCode(confList, chapterCode);
+  const blob = `${formName} ${chapterName} ${formCode} ${chapterCode}`;
 
-  for (const [folder, rule] of Object.entries(CHAPTER_RULES)) {
-    if (rule.matchChapter(chapterCode) || rule.matchForm(formCode, confName)) {
-      return folder;
+  // Tên form cụ thể ưu tiên hơn mã chương
+  if (TECH_NAME_RE.test(formName) || TECH_NAME_RE.test(`${formCode}`)) {
+    return "chuong-5";
+  }
+  if (EVAL_NAME_RE.test(formName) || formCode === "BD_EVAL_CRITERIA") {
+    return "chuong-3";
+  }
+
+  if (chapterCode === "P2" || chapterCode === "C5") {
+    return "chuong-5";
+  }
+  if (chapterCode === "C3") {
+    return "chuong-3";
+  }
+
+  if (TECH_NAME_RE.test(chapterName) || TECH_NAME_RE.test(blob)) {
+    return "chuong-5";
+  }
+  if (EVAL_NAME_RE.test(chapterName) || EVAL_NAME_RE.test(blob)) {
+    return "chuong-3";
+  }
+
+  return null;
+}
+
+function pushUniqueRef(bucket, seen, ref) {
+  const key = ref.fileId || ref.localTextKey;
+  if (!key || seen.has(key)) {
+    return;
+  }
+  seen.add(key);
+  bucket.push(ref);
+}
+
+const CORE_TECH_FILE_RE =
+  /y[eê]u\s*c[aầ]u|tham\s*chi[eế]u|ch[uư][ơo]ng\s*v\b|chuong\s*v\b|tckt|tor\b|[đd]i[eề]u\s*kho[aả]n/i;
+const SKIP_ATTACHMENT_RE =
+  /bản\s*vẽ|ban\s*ve|drawing|\.dwg|TABH|bản\s*vẽ|cad\b|\.rar$|\.zip$|\.7z$/i;
+
+/**
+ * Ưu tiên file chính (file / fileOther*) đúng nội dung cần tóm tắt.
+ * Bỏ bản vẽ / archive phụ để nút bấm không tải hàng trăm MB.
+ */
+function collectRelevantFileRefs(formValue, chapter) {
+  const parsed = parseMaybeJson(formValue);
+  if (!parsed || typeof parsed !== "object") {
+    return collectFileRefs(formValue);
+  }
+
+  const named = [];
+  const seen = new Set();
+  const pushNamed = (node) => {
+    if (!node || typeof node !== "object") {
+      return;
+    }
+    const fileId = node.fileId || node.publicFileId;
+    if (!fileId || typeof fileId !== "string" || seen.has(fileId)) {
+      return;
+    }
+    seen.add(fileId);
+    named.push({
+      fileId,
+      fileName: node.fileName || node.name || fileId,
+    });
+  };
+
+  pushNamed(parsed.file);
+  for (const key of ["fileOther1", "fileOther2", "fileOther3", "fileOther4", "fileOther5"]) {
+    pushNamed(parsed[key]);
+  }
+  if (Array.isArray(parsed.attachFiles)) {
+    for (const item of parsed.attachFiles) {
+      pushNamed(item);
     }
   }
-  return null;
+
+  const all = collectFileRefs(parsed);
+  for (const ref of all) {
+    if (!seen.has(ref.fileId)) {
+      seen.add(ref.fileId);
+      named.push(ref);
+    }
+  }
+
+  if (chapter !== "chuong-5") {
+    return named.filter((ref) => !/\.(rar|zip|7z)$/i.test(ref.fileName || ""));
+  }
+
+  const primaryId = parsed.file?.fileId || parsed.file?.publicFileId || "";
+  const core = named.filter((ref) => {
+    const name = ref.fileName || "";
+    if (ref.fileId === primaryId) {
+      return true;
+    }
+    if (SKIP_ATTACHMENT_RE.test(name) && !CORE_TECH_FILE_RE.test(name)) {
+      return false;
+    }
+    return CORE_TECH_FILE_RE.test(name);
+  });
+
+  if (core.length) {
+    return core;
+  }
+  if (primaryId) {
+    return named.filter((ref) => ref.fileId === primaryId);
+  }
+  return named.slice(0, 1);
 }
 
 function extractChapterFiles(hsmt) {
@@ -130,10 +359,12 @@ function extractChapterFiles(hsmt) {
   const buckets = {
     "chuong-3": [],
     "chuong-5": [],
+    "hsmt-full": [],
   };
   const seenByChapter = {
     "chuong-3": new Set(),
     "chuong-5": new Set(),
+    "hsmt-full": new Set(),
   };
 
   for (const dto of dtos) {
@@ -142,22 +373,72 @@ function extractChapterFiles(hsmt) {
       continue;
     }
 
+    const formName =
+      confNameByFormCode(confList, dto.formCode) ||
+      confNameByFormCode(confList, dto.chapterCode) ||
+      SECTION_RULES[chapter].label;
+
     const refs = [
-      ...collectFileRefs(parseMaybeJson(dto.formValue)),
-      ...collectFileRefs(parseMaybeJson(dto.formContent)),
+      ...collectRelevantFileRefs(dto.formValue, chapter),
+      ...collectRelevantFileRefs(dto.formContent, chapter),
       ...collectFileRefs(dto.invFileOutDTO),
     ];
 
     for (const ref of refs) {
-      if (seenByChapter[chapter].has(ref.fileId)) {
-        continue;
-      }
-      seenByChapter[chapter].add(ref.fileId);
-      buckets[chapter].push({
+      pushUniqueRef(buckets[chapter], seenByChapter[chapter], {
         ...ref,
         formCode: dto.formCode || "",
         chapterCode: dto.chapterCode || "",
-        chapterLabel: CHAPTER_RULES[chapter].label,
+        chapterLabel: SECTION_RULES[chapter].label,
+        confName: formName,
+      });
+    }
+
+    // Nhiều gói chỉ có bảng/HTML tiêu chuẩn đánh giá — không có PDF
+    const text = formValueToText(dto.formValue, formName);
+    if (text.length >= MIN_TEXT_CHARS) {
+      const localTextKey = `text:${dto.formCode || dto.chapterCode || chapter}:${Buffer.from(text.slice(0, 120)).toString("base64").slice(0, 32)}`;
+      pushUniqueRef(buckets[chapter], seenByChapter[chapter], {
+        kind: "text",
+        localTextKey,
+        text,
+        fileName: safeFileName(`${formName || dto.formCode || chapter}.txt`, `${chapter}.txt`),
+        formCode: dto.formCode || "",
+        chapterCode: dto.chapterCode || "",
+        chapterLabel: SECTION_RULES[chapter].label,
+        confName: formName,
+      });
+    }
+  }
+
+  // Gói offline / KHAC: HSMT một file PDF
+  const offline = hsmt?.bidInvContractorOfflineDTO;
+  if (offline) {
+    const offlineRefs = [];
+    if (offline.fileId) {
+      offlineRefs.push({
+        fileId: offline.fileId,
+        fileName: offline.fileName || "E-HSMT.pdf",
+      });
+    }
+    if (Array.isArray(offline.listOtherFile)) {
+      for (const item of offline.listOtherFile) {
+        const fileId = item?.fileId || item?.id;
+        if (fileId) {
+          offlineRefs.push({
+            fileId,
+            fileName: item.fileName || item.name || `${fileId}.pdf`,
+          });
+        }
+      }
+    }
+    for (const ref of offlineRefs) {
+      pushUniqueRef(buckets["hsmt-full"], seenByChapter["hsmt-full"], {
+        ...ref,
+        formCode: "OFFLINE_HSMT",
+        chapterCode: "OFFLINE",
+        chapterLabel: SECTION_RULES["hsmt-full"].label,
+        confName: "HSMT đầy đủ",
       });
     }
   }
@@ -286,7 +567,7 @@ export function decorateHsmtResult(result, tenderId) {
 }
 
 /**
- * Tải file Chương III + Chương V của một gói thầu về data/hsmt/{notifyNo}/.
+ * Tải Tiêu chuẩn đánh giá HSDT + Yêu cầu kỹ thuật (mọi cấu trúc HSMT) về data/hsmt/{notifyNo}/.
  */
 export async function downloadHsmtChapters(config, tender, paths, options = {}) {
   const notifyNo = tender.notifyNo || tender.raw?.notifyNo || "";
@@ -338,6 +619,26 @@ export async function downloadHsmtChapters(config, tender, paths, options = {}) 
 
     for (const ref of refs) {
       try {
+        if (ref.kind === "text" && ref.text) {
+          const finalName = safeFileName(ref.fileName || `${folder}.txt`);
+          const dest = await ensureUniquePath(chapterDir, finalName);
+          await fs.writeFile(dest, ref.text, "utf8");
+          saved.push({
+            chapter: folder,
+            chapterLabel: ref.chapterLabel,
+            fileId: null,
+            kind: "text",
+            fileName: path.basename(dest),
+            bytes: Buffer.byteLength(ref.text, "utf8"),
+            relativePath: path.relative(paths.dataDir, dest).replace(/\\/g, "/"),
+            sourceUrl: null,
+            formCode: ref.formCode,
+            chapterCode: ref.chapterCode,
+            confName: ref.confName || "",
+          });
+          continue;
+        }
+
         const { buffer, fileName, url } = await downloadBinary(config, ref.fileId);
         const finalName = safeFileName(ref.fileName || fileName || `${ref.fileId}.bin`);
         const dest = await ensureUniquePath(chapterDir, finalName);
@@ -346,17 +647,19 @@ export async function downloadHsmtChapters(config, tender, paths, options = {}) 
           chapter: folder,
           chapterLabel: ref.chapterLabel,
           fileId: ref.fileId,
+          kind: "file",
           fileName: path.basename(dest),
           bytes: buffer.length,
           relativePath: path.relative(paths.dataDir, dest).replace(/\\/g, "/"),
           sourceUrl: url,
           formCode: ref.formCode,
           chapterCode: ref.chapterCode,
+          confName: ref.confName || "",
         });
       } catch (error) {
         errors.push({
           chapter: folder,
-          fileId: ref.fileId,
+          fileId: ref.fileId || null,
           fileName: ref.fileName,
           error: error.message,
         });
@@ -364,13 +667,25 @@ export async function downloadHsmtChapters(config, tender, paths, options = {}) 
     }
   }
 
+  // Offline full HSMT: nếu không tách được mục, vẫn dùng file đầy đủ để tóm tắt
+  const hasEvalOrTech =
+    saved.some((f) => f.chapter === "chuong-3" || f.chapter === "chuong-5");
+  if (!hasEvalOrTech && buckets["hsmt-full"].length === 0) {
+    errors.push({
+      chapter: "all",
+      error:
+        "Không tìm thấy Tiêu chuẩn đánh giá HSDT / Yêu cầu kỹ thuật trên HSMT (và không có file offline).",
+    });
+  }
+
   const result = {
-    ok: errors.length === 0,
+    ok: errors.length === 0 && saved.length > 0,
     notifyNo,
     downloadedAt: new Date().toISOString(),
     chapters: {
       "chuong-3": buckets["chuong-3"].length,
       "chuong-5": buckets["chuong-5"].length,
+      "hsmt-full": buckets["hsmt-full"].length,
     },
     files: saved,
     errors,
@@ -382,7 +697,7 @@ export async function downloadHsmtChapters(config, tender, paths, options = {}) 
 }
 
 /**
- * Tải Chương 3+5 cho danh sách gói (thường là gói mới sau scan).
+ * Tải tiêu chuẩn đánh giá + yêu cầu kỹ thuật cho danh sách gói.
  */
 export async function downloadHsmtForTenders(config, tenders, paths, options = {}) {
   const concurrency = Math.max(1, Math.min(Number(options.concurrency) || 2, 5));

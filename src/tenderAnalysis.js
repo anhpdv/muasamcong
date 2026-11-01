@@ -6,7 +6,11 @@ import {
   loadHainamProfile,
 } from "./hainamProfile.js";
 import { resolveHsmtDir } from "./hsmtDownload.js";
-import { extractPdfTexts, resolveLocalHsmtFiles } from "./pdfText.js";
+import {
+  extractPdfTexts,
+  resolveLocalHsmtFiles,
+  selectHsmtFilesForAnalysis,
+} from "./pdfText.js";
 
 const MAX_DOC_CHARS = 60000;
 /** Năng lực Hải Nam: ưu tiên gửi TOÀN BỘ; chỉ cắt khi vượt ngưỡng context rất lớn. */
@@ -176,7 +180,7 @@ function buildTenderContext(tender) {
   };
 }
 
-function sourceFilesMeta(localFiles) {
+function sourceFilesMeta(analysisFiles) {
   return localFiles.map((f) => ({
     chapter: f.chapter,
     name: f.name,
@@ -185,7 +189,7 @@ function sourceFilesMeta(localFiles) {
 }
 
 /**
- * Đọc Ch.3/Ch.5 vừa tải + dữ liệu Hải Nam → tóm tắt + đánh giá khả thi.
+ * Đọc tiêu chuẩn đánh giá HSDT + yêu cầu kỹ thuật vừa tải + dữ liệu Hải Nam → tóm tắt + đánh giá khả thi.
  */
 export async function analyzeTenderInvite(config, tender, paths, hsmtResult, options = {}) {
   const notifyNo = tender.notifyNo || hsmtResult?.notifyNo;
@@ -205,7 +209,7 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
     const empty = normalizeAnalysis(
       {
         summary: {
-          overview: "Không có file Chương 3/5 để phân tích.",
+          overview: "Không có nội dung Tiêu chuẩn đánh giá HSDT / Yêu cầu kỹ thuật để phân tích.",
           chapter3: [],
           chapter5: [],
           keyConditions: [],
@@ -213,9 +217,9 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
         feasibility: {
           score: null,
           verdict: "can_xem_xet",
-          reasons: ["Chưa tải được file đính kèm HSMT."],
+          reasons: ["Chưa tải được nội dung HSMT liên quan đánh giá / yêu cầu kỹ thuật."],
           gaps: [],
-          recommendation: "Bấm lại “Lấy thông tin mời thầu” khi cổng MSC có file.",
+          recommendation: "Bấm lại “Lấy thông tin mời thầu” khi cổng MSC đã có HSMT.",
         },
       },
       { warnings: ["Không có file local"], profileUsed: false, sourceFiles: [], ok: false },
@@ -223,7 +227,14 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
     return saveTenderAnalysis(paths, notifyNo, empty);
   }
 
-  const extracted = await extractPdfTexts(localFiles);
+  const { selected: analysisFiles, skipped } = await selectHsmtFilesForAnalysis(localFiles);
+  const extracted = await extractPdfTexts(analysisFiles);
+  if (skipped.length) {
+    extracted.warnings = [
+      ...(extracted.warnings || []),
+      `Đã bỏ ${skipped.length} file phụ/quá lớn khỏi AI (bản vẽ, archive, PDF rất nặng) — vẫn giữ file lõi để tóm tắt.`,
+    ];
+  }
   const profile = await loadHainamProfile(paths);
   const profileText = getFullCapabilityText(profile).trim();
   const profileDocCount = profile.documents?.length || 0;
@@ -245,7 +256,7 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
       {
         summary: {
           overview:
-            "Chưa cấu hình AI (OPENAI_API_KEY). File Chương 3/5 đã tải nhưng chưa tạo được tóm tắt.",
+            "Chưa cấu hình AI (OPENAI_API_KEY). Đã lấy nội dung HSMT nhưng chưa tạo được tóm tắt.",
           chapter3: [],
           chapter5: [],
           keyConditions: [],
@@ -262,7 +273,7 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
         warnings,
         model: null,
         profileUsed: Boolean(profileText),
-        sourceFiles: sourceFilesMeta(localFiles),
+        sourceFiles: sourceFilesMeta(analysisFiles),
         ok: false,
         error: "missing_ai_key",
       },
@@ -283,7 +294,7 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
         feasibility: {
           score: null,
           verdict: "can_xem_xet",
-          reasons: ["PDF Chương 3/5 dạng scan, AI chưa đọc được nội dung."],
+          reasons: ["Tài liệu HSMT dạng scan, AI chưa đọc được nội dung."],
           gaps: [],
           recommendation: "Bổ sung bản PDF có text hoặc OCR trước khi đánh giá.",
         },
@@ -292,7 +303,7 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
         warnings,
         model: ai.model,
         profileUsed: Boolean(profileText),
-        sourceFiles: sourceFilesMeta(localFiles),
+        sourceFiles: sourceFilesMeta(analysisFiles),
         ok: false,
         error: "empty_pdf_text",
       },
@@ -301,28 +312,29 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
   }
 
   const system = `Bạn là chuyên gia đấu thầu Việt Nam, hỗ trợ Công ty Hải Nam quyết định tham gia thầu.
+Nguồn tài liệu có thể là: Tiêu chuẩn đánh giá HSDT, Yêu cầu về kỹ thuật, Điều khoản tham chiếu (TOR), hoặc HSMT offline đầy đủ — không chỉ “Chương III/V”.
 Nhiệm vụ:
-1) TÓM TẮT lõi HSMT — TẬP TRUNG VÀO SẢN PHẨM/HÀNG HÓA của gói thầu:
-   - Danh mục sản phẩm, số lượng, phạm vi cung cấp/lắp đặt
-   - Yêu cầu sản phẩm, thông số kỹ thuật then chốt
-   - Xuất xứ, chất lượng, bảo hành, chứng nhận liên quan sản phẩm (nếu có)
-   BỎ QUA hoặc chỉ nhắc rất ngắn các thủ tục hành chính/tiêu chuẩn đánh giá chung không gắn sản phẩm.
+1) TÓM TẮT lõi HSMT — TẬP TRUNG VÀO SẢN PHẨM/HÀNG HÓA/DỊCH VỤ của gói thầu:
+   - Danh mục sản phẩm/hạng mục, số lượng, phạm vi cung cấp/lắp đặt/thực hiện
+   - Yêu cầu sản phẩm, thông số kỹ thuật / TOR then chốt
+   - Tiêu chuẩn đánh giá HSDT liên quan năng lực–kỹ thuật–tài chính (tóm tắt điểm chính, không chép bảng dài)
+   - Xuất xứ, chất lượng, bảo hành, chứng nhận liên quan (nếu có)
 2) ĐỌC TOÀN BỘ năng lực Hải Nam → ĐÁNH GIÁ khả thi bằng cách đối chiếu yêu cầu sản phẩm/kỹ thuật với năng lực đó.
 Bắt buộc: không bịa số liệu/năng lực. Không copy nguyên văn dài.
 Nếu thiếu dữ liệu Hải Nam: verdict=can_xem_xet, gaps nêu rõ thiếu gì.
 Trả về ĐÚNG 1 JSON object:
 {
   "summary": {
-    "overview": "2-3 câu: gói thầu này cung cấp sản phẩm/hàng hóa gì, quy mô chính",
-    "products": ["từng sản phẩm/hạng mục hàng hóa + số lượng/đơn vị nếu có"],
-    "technicalSpecs": ["yêu cầu / thông số kỹ thuật quan trọng của sản phẩm"],
-    "keyConditions": ["điều kiện gắn sản phẩm: xuất xứ, bảo hành, chứng nhận, lắp đặt, thời gian giao..."]
+    "overview": "2-3 câu: gói thầu này cung cấp sản phẩm/hàng hóa/dịch vụ gì, quy mô chính",
+    "products": ["từng sản phẩm/hạng mục + số lượng/đơn vị nếu có"],
+    "technicalSpecs": ["yêu cầu / thông số kỹ thuật / TOR quan trọng"],
+    "keyConditions": ["điều kiện then chốt từ tiêu chuẩn đánh giá HSDT + yêu cầu kỹ thuật: năng lực, xuất xứ, bảo hành, chứng nhận, tiến độ..."]
   },
   "feasibility": {
     "score": 0-10,
     "verdict": "phu_hop | can_xem_xet | khong_phu_hop",
-    "reasons": ["so khớp năng lực Hải Nam với yêu cầu sản phẩm — mỗi ý 1 dòng"],
-    "gaps": ["sản phẩm/ thông số Hải Nam thiếu hoặc yếu — mỗi ý 1 dòng"],
+    "reasons": ["so khớp năng lực Hải Nam với yêu cầu — mỗi ý 1 dòng"],
+    "gaps": ["điểm Hải Nam thiếu hoặc yếu — mỗi ý 1 dòng"],
     "recommendation": "1-2 câu khuyến nghị cho Hải Nam"
   }
 }`;
@@ -344,12 +356,12 @@ Ghi chú nội bộ: ${profile.notes || "(không)"}
 
 ${profileForAi || "(CHƯA CÓ — đánh giá thận trọng, bắt buộc ghi thiếu dữ liệu trong gaps)"}
 
-## Nội dung file Chương 3 & Chương 5 (đã trích text)
+## Nội dung HSMT đã lấy (Tiêu chuẩn đánh giá HSDT / Yêu cầu kỹ thuật / TOR / HSMT offline)
 ${clip(extracted.combinedText, MAX_DOC_CHARS)}
 
 Yêu cầu:
-- Tóm tắt LÕI theo sản phẩm / yêu cầu sản phẩm / thông số kỹ thuật (không lan man thủ tục).
-- Đánh giá khả thi PHẢI đối chiếu yêu cầu sản phẩm với TOÀN BỘ năng lực Hải Nam.`;
+- Tóm tắt LÕI theo sản phẩm / yêu cầu kỹ thuật / tiêu chuẩn đánh giá liên quan (không lan man thủ tục thuần túy).
+- Đánh giá khả thi PHẢI đối chiếu yêu cầu với TOÀN BỘ năng lực Hải Nam.`;
 
   try {
     const { data, model } = await chatJson({ system, user, temperature: 0.2 });
@@ -357,7 +369,7 @@ Yêu cầu:
       warnings,
       model,
       profileUsed: Boolean(profileText),
-      sourceFiles: sourceFilesMeta(localFiles),
+      sourceFiles: sourceFilesMeta(analysisFiles),
       ok: true,
     });
     return saveTenderAnalysis(paths, notifyNo, analysis);
@@ -382,7 +394,7 @@ Yêu cầu:
         warnings,
         model: ai.model,
         profileUsed: Boolean(profileText),
-        sourceFiles: sourceFilesMeta(localFiles),
+        sourceFiles: sourceFilesMeta(analysisFiles),
         ok: false,
         error: error.message,
       },

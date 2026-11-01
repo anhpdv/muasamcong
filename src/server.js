@@ -360,7 +360,7 @@ function createServer(config, paths, auth) {
 
         const chapter = String(url.searchParams.get("chapter") || "");
         const name = path.basename(String(url.searchParams.get("name") || ""));
-        if (!["chuong-3", "chuong-5"].includes(chapter) || !name) {
+        if (!["chuong-3", "chuong-5", "hsmt-full"].includes(chapter) || !name) {
           sendJson(response, 400, { error: "Tham số file không hợp lệ" });
           return;
         }
