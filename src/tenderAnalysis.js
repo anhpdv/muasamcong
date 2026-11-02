@@ -180,8 +180,8 @@ function buildTenderContext(tender) {
   };
 }
 
-function sourceFilesMeta(analysisFiles) {
-  return localFiles.map((f) => ({
+function sourceFilesMeta(files) {
+  return (files || []).map((f) => ({
     chapter: f.chapter,
     name: f.name,
     relativePath: f.relativePath,
