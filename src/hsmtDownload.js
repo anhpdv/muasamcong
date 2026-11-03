@@ -142,6 +142,17 @@ function collectFileRefs(node, files = [], seen = new Set()) {
   return files;
 }
 
+function formatMoneyVnd(value) {
+  if (value == null || value === "") {
+    return "";
+  }
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return String(value);
+  }
+  return `${num.toLocaleString("vi-VN")} VND`;
+}
+
 function flattenEvalTable(rows, lines = [], depth = 0) {
   if (!Array.isArray(rows)) {
     return lines;
@@ -150,25 +161,139 @@ function flattenEvalTable(rows, lines = [], depth = 0) {
     if (!row || typeof row !== "object") {
       continue;
     }
-    const pos = row.pos || row.position || "";
-    const content = stripHtml(row.content || row.name || row.title || "");
-    const meta = [
+    const pos = row.pos || row.position || row.currentItemIndex || "";
+    const content = stripHtml(row.content || row.name || row.title || row.lotName || "");
+    const extras = [
+      row.hsCode ? `HS: ${row.hsCode}` : "",
+      row.contractValue ? `HĐ tương tự / mô tả: ${stripHtml(String(row.contractValue))}` : "",
+      row.designCapacity != null && row.designCapacity !== ""
+        ? `Giá trị thiết kế/min: ${formatMoneyVnd(row.designCapacity)}`
+        : "",
+      row.capacity ? `Công suất/SL: ${row.capacity}` : "",
       row.minValue != null && row.minValue !== "" ? `min=${row.minValue}` : "",
       row.maxValue != null && row.maxValue !== "" ? `max=${row.maxValue}` : "",
       row.qty != null && row.qty !== "" ? `sl=${row.qty}` : "",
       row.pointDetail ? stripHtml(String(row.pointDetail)) : "",
     ]
       .filter(Boolean)
-      .join(", ");
-    if (content || meta) {
+      .join("; ");
+    if (content || extras) {
       const indent = "  ".repeat(Math.min(depth, 6));
-      lines.push(`${indent}${[pos, content, meta ? `(${meta})` : ""].filter(Boolean).join(" — ")}`);
+      lines.push(
+        `${indent}${[pos, content].filter(Boolean).join(" — ")}${extras ? `\n${indent}  → ${extras}` : ""}`,
+      );
     }
     if (Array.isArray(row.children) && row.children.length) {
       flattenEvalTable(row.children, lines, depth + 1);
     }
   }
   return lines;
+}
+
+/**
+ * BD_EVAL_CRITERIA (Mục 2.1) trên MSC không phải Table HTML —
+ * là object: historyContract / taxObligations / averageRevenue / contractExperience...
+ * Cần map thành Bảng 01 (thương mại) + Bảng 02 (nhà sản xuất) để AI đọc đúng.
+ */
+export function formatBdEvalCriteria(formValue, confName = "") {
+  const v = parseMaybeJson(formValue);
+  if (!v || typeof v !== "object") {
+    return "";
+  }
+  if (!v.historyContract && !v.contractExperience && !v.averageRevenue && !v.taxObligations) {
+    return "";
+  }
+
+  const lines = [];
+  if (confName) {
+    lines.push(`# ${confName}`);
+  }
+  if (v.note) {
+    lines.push(`Ghi chú tỷ giá / ngân hàng: ${v.note}`);
+  }
+
+  lines.push("");
+  lines.push("## Bảng số 01 — Tiêu chuẩn đánh giá về năng lực và kinh nghiệm (nhà thầu thương mại / cung cấp)");
+
+  if (v.historyContract) {
+    const h = v.historyContract;
+    lines.push(
+      `1. Lịch sử không hoàn thành hợp đồng do lỗi của nhà thầu: ${h.isChecked ? "Áp dụng" : "Không áp dụng"}` +
+        (h.startYear ? ` (từ năm ${h.startYear} đến thời điểm đóng thầu)` : ""),
+    );
+  }
+  if (v.taxObligations) {
+    lines.push(
+      `2. Thực hiện nghĩa vụ thuế: ${v.taxObligations.isChecked ? "Áp dụng — đã thực hiện nghĩa vụ thuế của năm tài chính gần nhất" : "Không áp dụng"}`,
+    );
+  }
+
+  const financeBits = [];
+  if (v.finalResult?.isChecked) {
+    financeBits.push("kết quả hoạt động tài chính các năm gần nhất phải độc lập / lành mạnh theo E-HSMT");
+  }
+  if (v.averageRevenue?.isChecked) {
+    financeBits.push(
+      `doanh thu bình quân tối thiểu ${formatMoneyVnd(v.averageRevenue.totalRevenueMin)}` +
+        (v.averageRevenue.revenueYear ? ` trong ${v.averageRevenue.revenueYear} năm gần nhất` : ""),
+    );
+  }
+  if (v.insurance?.isChecked) {
+    financeBits.push("yêu cầu bảo hiểm / năng lực tài chính bổ sung theo E-HSMT");
+  }
+  if (financeBits.length) {
+    lines.push(`3. Năng lực tài chính: ${financeBits.join("; ")}`);
+  }
+
+  if (v.contractExperience) {
+    const c = v.contractExperience;
+    lines.push(
+      `4. Kinh nghiệm thực hiện hợp đồng tương tự: ${c.isChecked ? "Áp dụng" : "Không áp dụng"}` +
+        (c.experienceYear ? ` (tính từ năm ${c.experienceYear})` : ""),
+    );
+    if (c.contractValue) {
+      lines.push(`   - Yêu cầu giá trị / cách đáp ứng:\n${String(c.contractValue).trim()}`);
+    }
+    if (c.similarProperties) {
+      lines.push(`   - Tính chất tương tự:\n${String(c.similarProperties).trim()}`);
+    }
+  }
+
+  const hasBang2 =
+    v.productionCapacity?.isChecked ||
+    v.insuranceTable2?.isChecked ||
+    (typeof v.quantity === "string" && v.quantity.trim()) ||
+    (typeof v.efficiency === "string" && v.efficiency.trim()) ||
+    v.deliveryCapability != null;
+
+  if (hasBang2) {
+    lines.push("");
+    lines.push("## Bảng số 02 — Tiêu chuẩn đánh giá về năng lực sản xuất / nhà sản xuất (nếu áp dụng)");
+    let bang2Idx = 1;
+    if (v.productionCapacity?.isChecked) {
+      lines.push(`${bang2Idx}. Năng lực sản xuất: Áp dụng (đối chiếu Bảng Y)`);
+      bang2Idx += 1;
+    }
+    const qty = (v.quantity || v.quantity2 || "").trim();
+    if (qty) {
+      lines.push(`${bang2Idx}. Yêu cầu công suất / sản lượng:\n${qty}`);
+      bang2Idx += 1;
+    }
+    const eff = (v.efficiency || v.efficiency2 || "").trim();
+    if (eff && eff !== qty) {
+      lines.push(`${bang2Idx}. Hiệu suất / công suất thiết kế:\n${eff}`);
+      bang2Idx += 1;
+    }
+    if (v.insuranceTable2?.isChecked) {
+      lines.push(`${bang2Idx}. Bảo hiểm / điều kiện bảng 02: Áp dụng`);
+      bang2Idx += 1;
+    }
+    if (v.deliveryCapability != null && v.deliveryCapability !== "") {
+      lines.push(`${bang2Idx}. Năng lực giao hàng (deliveryCapability): ${v.deliveryCapability}`);
+    }
+  }
+
+  return lines.join("\n").trim();
 }
 
 /** Biến formValue JSON/HTML thành text để AI đọc khi không có PDF. */
@@ -198,6 +323,13 @@ export function formValueToText(formValue, confName = "") {
     return "";
   }
 
+  // Mục 2.1 BD_EVAL_CRITERIA: map Bảng 01 / Bảng 02
+  const evalText = formatBdEvalCriteria(formValue, "");
+  if (evalText) {
+    // confName đã push ở trên
+    return [confName ? `# ${confName}` : "", evalText].filter(Boolean).join("\n\n").trim();
+  }
+
   if (typeof formValue.content === "string" && formValue.content.trim()) {
     parts.push(
       /</.test(formValue.content) ? stripHtml(formValue.content) : formValue.content.trim(),
@@ -213,17 +345,53 @@ export function formValueToText(formValue, confName = "") {
   if (Array.isArray(formValue.Table) && formValue.Table.length) {
     const tableLines = flattenEvalTable(formValue.Table);
     if (tableLines.length) {
-      parts.push("Bảng tiêu chí:\n" + tableLines.join("\n"));
+      const title = /bảng\s*y|hợp đồng tương tự|năng lực sản xuất/i.test(confName)
+        ? "Bảng Y — Hợp đồng tương tự / năng lực sản xuất:"
+        : "Bảng tiêu chí:";
+      parts.push(`${title}\n` + tableLines.join("\n"));
     }
   }
 
-  // Các field text còn lại (bỏ file / id)
+  // Các field text còn lại (bỏ file / id / field đã xử lý trong eval)
+  const skipKeys = new Set([
+    "file",
+    "files",
+    "sharedFiles",
+    "attachFiles",
+    "fileOther1",
+    "fileOther2",
+    "fileOther3",
+    "fileOther4",
+    "fileOther5",
+    "fileTech",
+    "fileName1",
+    "fileName2",
+    "Table",
+    "Table1",
+    "content",
+    "html",
+    "description",
+    "historyContract",
+    "finalResult",
+    "averageRevenue",
+    "contractExperience",
+    "insurance",
+    "taxObligations",
+    "productionCapacity",
+    "insuranceTable2",
+    "deliveryCapability",
+    "quantity",
+    "quantity2",
+    "efficiency",
+    "efficiency2",
+    "attachFileId",
+    "attachFileName",
+    "note",
+    "mutiGoods",
+  ]);
+
   for (const [key, value] of Object.entries(formValue)) {
-    if (
-      ["file", "files", "sharedFiles", "attachFiles", "fileOther1", "fileOther2", "fileOther3", "fileOther4", "fileOther5", "Table", "content", "html", "description"].includes(
-        key,
-      )
-    ) {
+    if (skipKeys.has(key)) {
       continue;
     }
     if (typeof value === "string" && value.trim().length >= 20 && !/^[0-9a-f-]{36}$/i.test(value)) {
