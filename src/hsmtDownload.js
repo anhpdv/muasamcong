@@ -7,17 +7,22 @@ const HSMT_PATH =
   "/o/egp-portal-contractor-selection-v2/services/lcnt_tbmt_hsmt";
 
 /**
- * Không gắn cứng “Chương III / V”.
- * Phân loại theo nội dung: Tiêu chuẩn đánh giá HSDT vs Yêu cầu kỹ thuật (hoặc Điều khoản tham chiếu / TOR).
- * Giữ folder chuong-3 / chuong-5 để tương thích UI & API cũ.
+ * Checklist làm HSDT (ưu tiên lấy khi bấm “Lấy thông tin mời thầu”):
+ * - Chương II: E-CDNT 10.8 (tài liệu nộp kèm E-HSDT), E-CDNT 18.2 (bảo đảm dự thầu) — webform
+ * - Chương III mục 2: bảng NL/KN (01/02/X), bảng Y — webform; mục 3: tiêu chuẩn KT — file
+ * - Chương V: yêu cầu kỹ thuật / TOR — file
  */
 const SECTION_RULES = {
+  "chuong-2": {
+    label: "Chương II · E-CDNT 10.8 & 18.2",
+    folder: "chuong-2",
+  },
   "chuong-3": {
-    label: "Tiêu chuẩn đánh giá HSDT",
+    label: "Chương III · Tiêu chuẩn đánh giá HSDT",
     folder: "chuong-3",
   },
   "chuong-5": {
-    label: "Yêu cầu về kỹ thuật",
+    label: "Chương V · Yêu cầu về kỹ thuật",
     folder: "chuong-5",
   },
   "hsmt-full": {
@@ -27,10 +32,21 @@ const SECTION_RULES = {
 };
 
 const EVAL_NAME_RE =
-  /ti[eê]u\s*chu[aả]n\s*[đd][aá]nh\s*gi[aá]|[đd][aá]nh\s*gi[aá].{0,20}(e-)?hsdt|ch[uư][ơo]ng\s*iii\b|chuong\s*iii\b|ch[uư][ơo]ng\s*3\b/i;
+  /ti[eê]u\s*chu[aả]n\s*[đd][aá]nh\s*gi[aá]|[đd][aá]nh\s*gi[aá].{0,20}(e-)?hsdt|ch[uư][ơo]ng\s*iii\b|chuong\s*iii\b|ch[uư][ơo]ng\s*3\b|bảng\s*[xy01]|bang\s*[xy01]|hợp\s*đồng\s*tương\s*tự|năng\s*lực\s*sản\s*xuất/i;
 
 const TECH_NAME_RE =
   /y[eê]u\s*c[aầ]u\s*(v[eề]\s*)?k[ỹy]\s*thu[aậ]t|[đd]i[eề]u\s*kho[aả]n\s*tham\s*chi[eế]u|th[oô]ng\s*s[oố]\s*k[ỹy]\s*thu[aậ]t|ch[uư][ơo]ng\s*v\b|chuong\s*v\b|ch[uư][ơo]ng\s*5\b|ph[aầ]n\s*2\s*[:.\-–]?\s*y[eê]u\s*c[aầ]u|tor\b/i;
+
+const CH2_NAME_RE =
+  /ch[uư][ơo]ng\s*ii\b|chuong\s*ii\b|bảng\s*dữ\s*liệu|bang\s*du\s*lieu|BD_DATA_TABLE/i;
+
+/** Mục 2 Chương III (webform NL/KN / bảng Y) — không lấy mục tài chính thuần. */
+const C3_MUC2_RE =
+  /mục\s*2(\.|$|\s)|bang\s*[01xy]|bảng\s*[01xy]|BD_EVAL_CRITERIA|năng\s*lực\s*và\s*kinh\s*nghiệm|hợp\s*đồng\s*tương\s*tự|năng\s*lực\s*sản\s*xuất|nhân\s*sự\s*chủ\s*chốt/i;
+
+/** Mục 3 Chương III (file tiêu chuẩn đánh giá kỹ thuật). */
+const C3_MUC3_RE =
+  /mục\s*3(\.|$|\s)|ti[eê]u\s*chu[aả]n\s*[đd][aá]nh\s*gi[aá]\s*v[eề]\s*k[ỹy]\s*thu[aậ]t/i;
 
 const MIN_TEXT_CHARS = 80;
 
@@ -234,8 +250,7 @@ function confNameByFormCode(confList, formCode) {
 }
 
 /**
- * Phân loại theo tên mục/chương trước, rồi mới tới mã C3/P2/C5.
- * Tránh phụ thuộc formCode cứng (BD.DT.02.0792, …).
+ * Phân loại theo checklist HSDT: Ch.II (BD_DATA_TABLE) / Ch.III mục 2–3 / Ch.V.
  */
 export function classifyChapter(dto, confList) {
   const chapterCode = String(dto.chapterCode || "");
@@ -244,11 +259,24 @@ export function classifyChapter(dto, confList) {
   const chapterName = confNameByFormCode(confList, chapterCode);
   const blob = `${formName} ${chapterName} ${formCode} ${chapterCode}`;
 
-  // Tên form cụ thể ưu tiên hơn mã chương
-  if (TECH_NAME_RE.test(formName) || TECH_NAME_RE.test(`${formCode}`)) {
+  if (
+    formCode === "BD_DATA_TABLE" ||
+    chapterCode === "BD_DATA_TABLE" ||
+    CH2_NAME_RE.test(formName) ||
+    CH2_NAME_RE.test(chapterName)
+  ) {
+    return "chuong-2";
+  }
+
+  if (TECH_NAME_RE.test(formName) || TECH_NAME_RE.test(formCode)) {
     return "chuong-5";
   }
-  if (EVAL_NAME_RE.test(formName) || formCode === "BD_EVAL_CRITERIA") {
+  if (
+    C3_MUC2_RE.test(formName) ||
+    C3_MUC3_RE.test(formName) ||
+    EVAL_NAME_RE.test(formName) ||
+    formCode === "BD_EVAL_CRITERIA"
+  ) {
     return "chuong-3";
   }
 
@@ -256,6 +284,10 @@ export function classifyChapter(dto, confList) {
     return "chuong-5";
   }
   if (chapterCode === "C3") {
+    // Chỉ lấy mục 2–3 (+ bảng Y/X); bỏ mục tài chính/hợp lệ thuần nếu tên rõ ràng không khớp
+    if (/mục\s*[145]\b|tài\s*chính|hợp\s*lệ|phương\s*án\s*kỹ\s*thuật\s*thay\s*thế/i.test(formName) && !C3_MUC2_RE.test(formName) && !C3_MUC3_RE.test(formName)) {
+      return null;
+    }
     return "chuong-3";
   }
 
@@ -267,6 +299,78 @@ export function classifyChapter(dto, confList) {
   }
 
   return null;
+}
+
+/** Trích E-CDNT 10.8 + 18.2 từ webform Chương II (BD_DATA_TABLE) — cấu trúc HH/XL/TV khác nhau. */
+export function extractChuong2ChecklistText(formValue) {
+  const parsed = parseMaybeJson(formValue);
+  if (!parsed || typeof parsed !== "object") {
+    return "";
+  }
+
+  const parts = ["# Chương II — Checklist làm E-HSDT", ""];
+
+  // E-CDNT 10.8: tài liệu nộp kèm E-HSDT
+  const docs108 =
+    parsed?.dataRow4?.listArrDocumentsRequired ||
+    parsed?.dataRow6?.listArrRow6 ||
+    parsed?.listArrDocumentsRequired ||
+    null;
+  parts.push("## E-CDNT 10.8 — Nhà thầu phải nộp cùng với E-HSDT các tài liệu sau đây");
+  if (docs108 && String(docs108).trim()) {
+    parts.push(String(docs108).trim());
+  } else {
+    parts.push("(Chưa có nội dung trên webform / gói không áp dụng mục này.)");
+  }
+  parts.push("");
+
+  // E-CDNT 18.2: bảo đảm dự thầu
+  const g18 =
+    parsed?.dataRow18_2 ||
+    parsed?.e_cdnt_18_2 ||
+    parsed?.dataRow14 ||
+    null;
+  parts.push("## E-CDNT 18.2 — Nội dung bảo đảm dự thầu");
+  const guaranteeLines = [];
+  if (g18 && typeof g18 === "object") {
+    if (g18.guaranteeValue != null && g18.guaranteeValue !== "") {
+      guaranteeLines.push(`- Giá trị bảo đảm dự thầu: ${g18.guaranteeValue}`);
+    }
+    if (g18.guaranteeTime != null && g18.guaranteeTime !== "") {
+      guaranteeLines.push(`- Thời gian hiệu lực bảo đảm dự thầu: ${g18.guaranteeTime} ngày`);
+    }
+    if (Array.isArray(g18.listLotNoGuarantee) && g18.listLotNoGuarantee.length) {
+      guaranteeLines.push(`- Lô áp dụng: ${JSON.stringify(g18.listLotNoGuarantee)}`);
+    }
+  }
+  if (parsed.bideHsdt != null && parsed.bideHsdt !== "") {
+    guaranteeLines.push(`- Chi phí nộp E-HSDT / ghi chú: ${parsed.bideHsdt}`);
+  }
+  if (parsed.effectTimeHSDT != null && parsed.effectTimeHSDT !== "") {
+    guaranteeLines.push(`- Thời gian hiệu lực E-HSDT: ${parsed.effectTimeHSDT} ngày`);
+  }
+  if (parsed.eGuaranteeRadioValue != null && parsed.eGuaranteeRadioValue !== "") {
+    guaranteeLines.push(`- Hình thức bảo đảm (radio): ${parsed.eGuaranteeRadioValue}`);
+  }
+  if (parsed.guaranteePercent != null && parsed.guaranteePercent !== "") {
+    guaranteeLines.push(`- Tỷ lệ bảo đảm: ${parsed.guaranteePercent}%`);
+  }
+  if (parsed?.e_cdnt_18_1?.eGuarantee?.value != null) {
+    guaranteeLines.push(`- e_cdnt_18_1.eGuarantee: ${parsed.e_cdnt_18_1.eGuarantee.value}`);
+  }
+  if (guaranteeLines.length) {
+    parts.push(guaranteeLines.join("\n"));
+  } else if (g18 && typeof g18 === "object" && (g18.competentPersons || g18.adviceCouncil)) {
+    // TV đôi khi dùng dataRow14 cho mục khác — vẫn ghi nhận để không mất dữ liệu
+    parts.push(
+      "(Trường dataRow14 trên gói này không phải bảo đảm dự thầu — cấu trúc TV/XL khác. Kiểm tra thêm trên cổng MSC.)",
+    );
+    parts.push(JSON.stringify(g18, null, 2));
+  } else {
+    parts.push("(Chưa có nội dung bảo đảm dự thầu trên webform / gói không áp dụng.)");
+  }
+
+  return parts.join("\n").trim();
 }
 
 function pushUniqueRef(bucket, seen, ref) {
@@ -311,6 +415,9 @@ function collectRelevantFileRefs(formValue, chapter) {
   };
 
   pushNamed(parsed.file);
+  pushNamed(parsed.fileTech);
+  pushNamed(parsed.fileName2);
+  pushNamed(parsed.fileName1);
   for (const key of ["fileOther1", "fileOther2", "fileOther3", "fileOther4", "fileOther5"]) {
     pushNamed(parsed[key]);
   }
@@ -357,11 +464,13 @@ function extractChapterFiles(hsmt) {
   const confList = hsmt?.bidaInvChapterConfList || [];
   const dtos = Array.isArray(hsmt?.bidoInvBiddingDTO) ? hsmt.bidoInvBiddingDTO : [];
   const buckets = {
+    "chuong-2": [],
     "chuong-3": [],
     "chuong-5": [],
     "hsmt-full": [],
   };
   const seenByChapter = {
+    "chuong-2": new Set(),
     "chuong-3": new Set(),
     "chuong-5": new Set(),
     "hsmt-full": new Set(),
@@ -394,7 +503,25 @@ function extractChapterFiles(hsmt) {
       });
     }
 
-    // Nhiều gói chỉ có bảng/HTML tiêu chuẩn đánh giá — không có PDF
+    // Chương II: tách đúng E-CDNT 10.8 + 18.2
+    if (chapter === "chuong-2") {
+      const checklist = extractChuong2ChecklistText(dto.formValue);
+      if (checklist.length >= MIN_TEXT_CHARS) {
+        pushUniqueRef(buckets[chapter], seenByChapter[chapter], {
+          kind: "text",
+          localTextKey: `text:chuong-2-checklist:${dto.formCode || "BD_DATA_TABLE"}`,
+          text: checklist,
+          fileName: safeFileName("E-CDNT-10.8-va-18.2.txt", "chuong-2.txt"),
+          formCode: dto.formCode || "",
+          chapterCode: dto.chapterCode || "",
+          chapterLabel: SECTION_RULES[chapter].label,
+          confName: formName,
+        });
+      }
+      continue;
+    }
+
+    // Chương III/V: lưu text webform (bảng NL/KN, bảng Y…) khi không/cùng có file
     const text = formValueToText(dto.formValue, formName);
     if (text.length >= MIN_TEXT_CHARS) {
       const localTextKey = `text:${dto.formCode || dto.chapterCode || chapter}:${Buffer.from(text.slice(0, 120)).toString("base64").slice(0, 32)}`;
@@ -668,13 +795,14 @@ export async function downloadHsmtChapters(config, tender, paths, options = {}) 
   }
 
   // Offline full HSMT: nếu không tách được mục, vẫn dùng file đầy đủ để tóm tắt
-  const hasEvalOrTech =
-    saved.some((f) => f.chapter === "chuong-3" || f.chapter === "chuong-5");
-  if (!hasEvalOrTech && buckets["hsmt-full"].length === 0) {
+  const hasChecklistCore = saved.some((f) =>
+    ["chuong-2", "chuong-3", "chuong-5"].includes(f.chapter),
+  );
+  if (!hasChecklistCore && buckets["hsmt-full"].length === 0) {
     errors.push({
       chapter: "all",
       error:
-        "Không tìm thấy Tiêu chuẩn đánh giá HSDT / Yêu cầu kỹ thuật trên HSMT (và không có file offline).",
+        "Không tìm thấy Chương II/III/V (E-CDNT 10.8–18.2, tiêu chuẩn đánh giá, yêu cầu kỹ thuật) trên HSMT.",
     });
   }
 
@@ -684,6 +812,7 @@ export async function downloadHsmtChapters(config, tender, paths, options = {}) 
     notifyNo,
     downloadedAt: new Date().toISOString(),
     chapters: {
+      "chuong-2": buckets["chuong-2"].length,
       "chuong-3": buckets["chuong-3"].length,
       "chuong-5": buckets["chuong-5"].length,
       "hsmt-full": buckets["hsmt-full"].length,

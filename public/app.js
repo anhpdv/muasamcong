@@ -469,7 +469,7 @@ function renderFileList(files, emptyText) {
 
 function renderHsmtFiles(hsmt) {
   if (!hsmt) {
-    return `<p class="doc-empty">Chưa lấy thông tin mời thầu. Bấm nút bên trên để tải Tiêu chuẩn đánh giá HSDT và Yêu cầu kỹ thuật.</p>`;
+    return `<p class="doc-empty">Chưa lấy thông tin mời thầu. Bấm nút để tải checklist HSDT: Ch.II (E-CDNT 10.8/18.2), Ch.III mục 2–3, Ch.V.</p>`;
   }
 
   if (!hsmt.ok && !(hsmt.files || []).length) {
@@ -477,8 +477,9 @@ function renderHsmtFiles(hsmt) {
   }
 
   const groups = [
-    { key: "chuong-3", title: "Tiêu chuẩn đánh giá HSDT" },
-    { key: "chuong-5", title: "Yêu cầu về kỹ thuật / TOR" },
+    { key: "chuong-2", title: "Chương II · E-CDNT 10.8 & 18.2 (webform)" },
+    { key: "chuong-3", title: "Chương III · Mục 2 NL/KN + Mục 3 tiêu chuẩn KT" },
+    { key: "chuong-5", title: "Chương V · Yêu cầu về kỹ thuật / TOR" },
     { key: "hsmt-full", title: "HSMT đầy đủ (offline)" },
   ];
 

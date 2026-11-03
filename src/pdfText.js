@@ -80,7 +80,8 @@ function isTextSidecar(filePath) {
 function analysisPriority(file) {
   const name = `${file.name || ""} ${file.chapter || ""}`.toLowerCase();
   let score = 0;
-  if (file.chapter === "chuong-3" || /tiêu chuẩn|đánh giá|eval/.test(name)) score += 30;
+  if (file.chapter === "chuong-2" || /e-cdnt|10\.8|18\.2|bảo đảm|tài liệu nộp/.test(name)) score += 35;
+  if (file.chapter === "chuong-3" || /tiêu chuẩn|đánh giá|eval|bảng y|năng lực/.test(name)) score += 30;
   if (file.chapter === "chuong-5" || /yêu cầu|tham chiếu|kỹ thuật|tor/.test(name)) score += 30;
   if (file.chapter === "hsmt-full") score += 20;
   if (/\.txt$/i.test(file.name || "")) score += 15;

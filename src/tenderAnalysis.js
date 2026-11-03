@@ -326,24 +326,27 @@ export async function analyzeTenderInvite(config, tender, paths, hsmtResult, opt
     return saveTenderAnalysis(paths, notifyNo, fallback);
   }
 
-  const system = `Bạn là chuyên gia đấu thầu Việt Nam, hỗ trợ Công ty Hải Nam quyết định tham gia thầu.
-Nguồn tài liệu có thể là: Tiêu chuẩn đánh giá HSDT, Yêu cầu về kỹ thuật, Điều khoản tham chiếu (TOR), hoặc HSMT offline đầy đủ — không chỉ “Chương III/V”.
+  const system = `Bạn là chuyên gia đấu thầu Việt Nam, hỗ trợ Công ty Hải Nam làm E-HSDT và quyết định tham gia thầu.
+Nguồn tài liệu checklist (bắt buộc ưu tiên):
+1) Chương II — E-CDNT 10.8 (tài liệu nộp kèm E-HSDT), E-CDNT 18.2 (nội dung bảo đảm dự thầu)
+2) Chương III — Mục 2 (bảng NL/KN / bảng Y), Mục 3 (tiêu chuẩn đánh giá kỹ thuật)
+3) Chương V — Yêu cầu về kỹ thuật / TOR
 Nhiệm vụ:
-1) TÓM TẮT lõi HSMT — TẬP TRUNG VÀO SẢN PHẨM/HÀNG HÓA/DỊCH VỤ của gói thầu:
-   - Danh mục sản phẩm/hạng mục, số lượng, phạm vi cung cấp/lắp đặt/thực hiện
-   - Yêu cầu sản phẩm, thông số kỹ thuật / TOR then chốt
-   - Tiêu chuẩn đánh giá HSDT liên quan năng lực–kỹ thuật–tài chính (tóm tắt điểm chính, không chép bảng dài)
-   - Xuất xứ, chất lượng, bảo hành, chứng nhận liên quan (nếu có)
-2) ĐỌC TOÀN BỘ năng lực Hải Nam → ĐÁNH GIÁ khả thi bằng cách đối chiếu yêu cầu sản phẩm/kỹ thuật với năng lực đó.
-Bắt buộc: không bịa số liệu/năng lực. Không copy nguyên văn dài.
+1) TÓM TẮT theo checklist làm hồ sơ dự thầu + sản phẩm/hàng hóa:
+   - Tài liệu phải nộp kèm E-HSDT (10.8), bảo đảm dự thầu (18.2: giá trị/thời hạn nếu có)
+   - Yêu cầu năng lực–kinh nghiệm / hợp đồng tương tự (Ch.III mục 2)
+   - Tiêu chuẩn đánh giá kỹ thuật then chốt (Ch.III mục 3)
+   - Yêu cầu kỹ thuật / thông số sản phẩm (Ch.V)
+2) ĐỌC TOÀN BỘ năng lực Hải Nam → ĐÁNH GIÁ khả thi đối chiếu với các yêu cầu trên.
+Bắt buộc: không bịa. Không copy nguyên văn dài.
 Nếu thiếu dữ liệu Hải Nam: verdict=can_xem_xet, gaps nêu rõ thiếu gì.
 Trả về ĐÚNG 1 JSON object:
 {
   "summary": {
-    "overview": "2-3 câu: gói thầu này cung cấp sản phẩm/hàng hóa/dịch vụ gì, quy mô chính",
-    "products": ["từng sản phẩm/hạng mục + số lượng/đơn vị nếu có"],
-    "technicalSpecs": ["yêu cầu / thông số kỹ thuật / TOR quan trọng"],
-    "keyConditions": ["điều kiện then chốt từ tiêu chuẩn đánh giá HSDT + yêu cầu kỹ thuật: năng lực, xuất xứ, bảo hành, chứng nhận, tiến độ..."]
+    "overview": "2-3 câu: gói thầu cung cấp gì + điểm checklist HSDT then chốt",
+    "products": ["sản phẩm/hạng mục + số lượng nếu có"],
+    "technicalSpecs": ["yêu cầu kỹ thuật / tiêu chuẩn đánh giá KT quan trọng"],
+    "keyConditions": ["10.8 tài liệu nộp kèm", "18.2 bảo đảm dự thầu", "NL/KN / hợp đồng tương tự", "điều kiện khác then chốt"]
   },
   "feasibility": {
     "score": 0-10,
@@ -371,11 +374,11 @@ Ghi chú nội bộ: ${profile.notes || "(không)"}
 
 ${profileForAi || "(CHƯA CÓ — đánh giá thận trọng, bắt buộc ghi thiếu dữ liệu trong gaps)"}
 
-## Nội dung HSMT đã lấy (Tiêu chuẩn đánh giá HSDT / Yêu cầu kỹ thuật / TOR / HSMT offline)
+## Nội dung HSMT checklist (Ch.II E-CDNT 10.8/18.2 · Ch.III mục 2–3 · Ch.V · offline nếu có)
 ${clip(extracted.combinedText, MAX_DOC_CHARS)}
 
 Yêu cầu:
-- Tóm tắt LÕI theo sản phẩm / yêu cầu kỹ thuật / tiêu chuẩn đánh giá liên quan (không lan man thủ tục thuần túy).
+- Tóm tắt theo checklist làm E-HSDT + sản phẩm/yêu cầu kỹ thuật.
 - Đánh giá khả thi PHẢI đối chiếu yêu cầu với TOÀN BỘ năng lực Hải Nam.`;
 
   try {
