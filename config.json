@@ -35,6 +35,14 @@
     "pageSize": 10,
     "maxPages": 10
   },
+  "quoteFile": "quotes.jsonl",
+  "quoteStateFile": "quote-state.json",
+  "quoteSchedule": {
+    "bidForms": ["HHDVK"],
+    "validity": "open",
+    "publicDateToday": true,
+    "maxPages": 10
+  },
   "auth": {
     "sessionTtlHours": 168,
     "bootstrap": {

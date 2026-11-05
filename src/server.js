@@ -13,6 +13,18 @@ import {
 } from "./loadTenders.js";
 import { runMonitor } from "./monitor.js";
 import { maybeRunDueScans, runScheduledScan } from "./scheduledScan.js";
+import {
+  filterQuotes,
+  loadQuoteCatalog,
+  quotePaths,
+  runScheduledQuoteScan,
+  scanQuotes,
+} from "./quotes.js";
+import {
+  downloadQuoteDecision,
+  readQuoteDecision,
+  resolveDecisionFile,
+} from "./quoteDecision.js";
 import { scanTenders } from "./scan.js";
 import { fetchTenderDocuments } from "./tenderDocuments.js";
 import {
@@ -209,6 +221,7 @@ function countByWorkflowStatus(catalog) {
 
 function createServer(config, paths, auth) {
   let scanPromise = null;
+  let quoteScanPromise = null;
   const sessionTtlSeconds = (config.auth?.sessionTtlHours || 168) * 60 * 60;
 
   return http.createServer(async (request, response) => {
@@ -684,6 +697,158 @@ function createServer(config, paths, auth) {
           ...result,
           items: page.items,
           pagination: page.pagination,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/quotes" && request.method === "GET") {
+        const paths = quotePaths(config, rootDir);
+        const q = String(url.searchParams.get("q") || "").trim();
+        const items = filterQuotes(await loadQuoteCatalog(paths), { q });
+        const page = paginate(
+          items,
+          Number(url.searchParams.get("page")) || 1,
+          Number(url.searchParams.get("limit")) || 15,
+        );
+        const quoteState = await loadState(paths.quoteStatePath);
+        sendJson(response, 200, {
+          ok: true,
+          items: page.items,
+          pagination: page.pagination,
+          lastCheckAt: quoteState?.lastCheckAt || null,
+        });
+        return;
+      }
+
+      const quoteDecisionFileMatch = url.pathname.match(/^\/api\/quotes\/([^/]+)\/decision\/file$/);
+      const quoteDecisionMatch = url.pathname.match(/^\/api\/quotes\/([^/]+)\/decision$/);
+
+      if (quoteDecisionFileMatch && request.method === "GET") {
+        const id = decodeURIComponent(quoteDecisionFileMatch[1]);
+        const quotePathsResolved = quotePaths(config, rootDir);
+        const quote = (await loadQuoteCatalog(quotePathsResolved)).find(
+          (item) => item.id === id || item.notifyNo === id,
+        );
+        if (!quote) {
+          sendJson(response, 404, { error: "Không tìm thấy yêu cầu báo giá" });
+          return;
+        }
+        const file = await resolveDecisionFile(config, rootDir, quote);
+        if (!file) {
+          sendJson(response, 404, { error: "Chưa có file quyết định phê duyệt" });
+          return;
+        }
+        const content = await fs.readFile(file.filePath);
+        const type = file.fileName.toLowerCase().endsWith(".pdf")
+          ? "application/pdf"
+          : "application/octet-stream";
+        response.writeHead(200, {
+          "Content-Type": type,
+          "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+          "Cache-Control": "no-store",
+        });
+        response.end(content);
+        return;
+      }
+
+      if (quoteDecisionMatch && request.method === "GET") {
+        const id = decodeURIComponent(quoteDecisionMatch[1]);
+        const quotePathsResolved = quotePaths(config, rootDir);
+        const quote = (await loadQuoteCatalog(quotePathsResolved)).find(
+          (item) => item.id === id || item.notifyNo === id,
+        );
+        if (!quote) {
+          sendJson(response, 404, { error: "Không tìm thấy yêu cầu báo giá" });
+          return;
+        }
+        sendJson(response, 200, await readQuoteDecision(config, rootDir, quote));
+        return;
+      }
+
+      if (quoteDecisionMatch && request.method === "POST") {
+        const id = decodeURIComponent(quoteDecisionMatch[1]);
+        const quotePathsResolved = quotePaths(config, rootDir);
+        const quote = (await loadQuoteCatalog(quotePathsResolved)).find(
+          (item) => item.id === id || item.notifyNo === id,
+        );
+        if (!quote) {
+          sendJson(response, 404, { error: "Không tìm thấy yêu cầu báo giá" });
+          return;
+        }
+        const result = await downloadQuoteDecision(config, rootDir, quote);
+        sendJson(response, 200, result);
+        return;
+      }
+
+      if (url.pathname === "/api/quotes/scan" && request.method === "POST") {
+        const body = await readBody(request);
+        const scanOptions = {
+          rootDir,
+          keyword: body.keyword || body.q || "",
+          matchType: body.matchType || "all-1",
+          exclude: body.exclude || "",
+          investor: body.investor || "",
+          category: body.category || "",
+          bidForm: body.bidForm || "",
+          provCode: body.provCode || "",
+          provCodes: Array.isArray(body.provCodes) ? body.provCodes : [],
+          publicDateToday: Boolean(body.publicDateToday),
+          publicDateFrom: body.publicDateFrom || "",
+          publicDateTo: body.publicDateTo || "",
+          validity: body.validity || "open",
+          maxPages: Number(body.maxPages) || 10,
+          pageSize: 10,
+        };
+
+        if (
+          !scanOptions.keyword &&
+          !scanOptions.provCode &&
+          !(scanOptions.provCodes || []).length &&
+          !scanOptions.bidForm &&
+          !scanOptions.publicDateToday &&
+          !scanOptions.publicDateFrom
+        ) {
+          sendJson(response, 400, {
+            error: "Chọn tỉnh, phân loại, từ khóa hoặc khoảng ngày trước khi quét yêu cầu báo giá",
+          });
+          return;
+        }
+
+        if (!quoteScanPromise) {
+          quoteScanPromise = scanQuotes(config, scanOptions).finally(() => {
+            quoteScanPromise = null;
+          });
+        }
+        const result = await quoteScanPromise;
+        const page = paginate(result.items, body.page || 1, body.limit || 15);
+        sendJson(response, 200, {
+          ok: true,
+          message:
+            result.newCount > 0
+              ? `Yêu cầu báo giá: ${result.checked} bản ghi, lưu mới ${result.newCount}`
+              : `Yêu cầu báo giá: ${result.checked} bản ghi, không có bản ghi mới`,
+          ...result,
+          items: page.items,
+          pagination: page.pagination,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/quotes/scan/default" && request.method === "POST") {
+        if (!quoteScanPromise) {
+          quoteScanPromise = runScheduledQuoteScan(config, rootDir).finally(() => {
+            quoteScanPromise = null;
+          });
+        }
+        const result = await quoteScanPromise;
+        sendJson(response, 200, {
+          ok: true,
+          source: "schedule",
+          message:
+            result.newCount > 0
+              ? `Quét YCBG mặc định: ${result.checked} bản ghi, lưu mới ${result.newCount}`
+              : `Quét YCBG mặc định: ${result.checked} bản ghi, không có bản ghi mới`,
+          ...result,
         });
         return;
       }

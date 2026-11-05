@@ -6,6 +6,7 @@ import { normalizeTender, tenderKey } from "./normalize.js";
 import { saveNewTenders } from "./scan.js";
 import { ensureDataDir, loadState, saveState } from "./storage.js";
 import { syncToMtp } from "./mtpSync.js";
+import { runScheduledQuoteScan } from "./quotes.js";
 
 function log(message) {
   const time = new Date().toISOString();
@@ -205,11 +206,19 @@ export async function maybeRunDueScans(config, rootDir) {
     }
 
     const result = await runScheduledScan(config, rootDir);
+    let quotes = null;
+    try {
+      quotes = await runScheduledQuoteScan(config, rootDir);
+    } catch (error) {
+      console.error(`[schedule] Yêu cầu báo giá: ${error.message}`);
+    }
     scheduleState.runs = scheduleState.runs || {};
     scheduleState.runs[runKey] = {
       ranAt: result.ranAt,
       newCount: result.newCount,
       checked: result.checked,
+      quotesChecked: quotes?.checked ?? 0,
+      quotesNew: quotes?.newCount ?? 0,
     };
     await saveScheduleState(scheduleStatePath, scheduleState);
     results.push({ slot, ...result });

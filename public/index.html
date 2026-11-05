@@ -11,7 +11,7 @@
       rel="stylesheet"
     />
     <link rel="icon" href="/logo-hainam.png" type="image/png" />
-    <link rel="stylesheet" href="/styles.css?v=14" />
+    <link rel="stylesheet" href="/styles.css?v=16" />
   </head>
   <body>
     <header class="app-header">
@@ -31,6 +31,9 @@
         </a>
 
         <div class="app-header__actions">
+          <button class="btn btn--ghost btn--sm" type="button" id="tabQuotes">
+            Yêu cầu báo giá
+          </button>
           <button class="btn btn--primary btn--sm" type="button" id="tabHainam">
             Năng lực Hải Nam
           </button>
@@ -174,6 +177,126 @@
         </div>
 
         <div class="pagination" id="pagination"></div>
+      </section>
+    </main>
+
+    <main class="page" id="viewQuotes" hidden>
+      <section class="scan-panel" id="quoteScanPanel">
+        <div class="scan-panel__head">
+          <h2>Quét yêu cầu báo giá</h2>
+          <p>Cùng lịch tự động với TBMT (08:00, 12:00, 17:00). Mặc định: hàng hóa/dịch vụ, còn hạn, đăng hôm nay, đúng các tỉnh trong lịch.</p>
+        </div>
+        <div class="quote-grid">
+          <label>
+            <span>Từ khóa</span>
+            <input id="quoteKeyword" type="text" placeholder="Mã / tên yêu cầu báo giá" />
+          </label>
+          <label>
+            <span>Cách khớp từ</span>
+            <select id="quoteMatchType">
+              <option value="all-1">Khớp tất cả từ (phân biệt dấu)</option>
+              <option value="all-0">Khớp tất cả từ (không phân biệt dấu)</option>
+              <option value="any-1">Khớp một số từ (phân biệt dấu)</option>
+              <option value="any-0">Khớp một số từ (không phân biệt dấu)</option>
+              <option value="phrase-1">Khớp chính xác cụm từ</option>
+            </select>
+          </label>
+          <label>
+            <span>Không chứa từ</span>
+            <input id="quoteExclude" type="text" placeholder="cách nhau bằng dấu phẩy" />
+          </label>
+          <label>
+            <span>Chủ đầu tư</span>
+            <input id="quoteInvestor" type="text" placeholder="Tên hoặc mã CĐT" />
+          </label>
+          <label>
+            <span>Phân loại</span>
+            <select id="quoteBidForm">
+              <option value="HHDVK">Gói thầu hàng hóa/dịch vụ</option>
+              <option value="VATTU">Vật tư</option>
+              <option value="VATTU_ALL">Vật tư (tất cả)</option>
+              <option value="THUOC">Thuốc</option>
+              <option value="HH">Hàng hóa</option>
+              <option value="">Tất cả phân loại</option>
+            </select>
+          </label>
+          <label>
+            <span>Danh mục hàng hóa/dịch vụ</span>
+            <input id="quoteCategory" type="text" placeholder="Lọc thêm theo tên yêu cầu" />
+          </label>
+          <label>
+            <span>Tỉnh/thành</span>
+            <select id="quoteProvince">
+              <option value="">Tất cả tỉnh</option>
+            </select>
+          </label>
+          <label>
+            <span>Ngày đăng</span>
+            <select id="quoteTimePreset">
+              <option value="today" selected>Hôm nay</option>
+              <option value="7d">7 ngày</option>
+              <option value="30d">30 ngày</option>
+              <option value="custom">Tùy chọn</option>
+              <option value="all">Mọi thời điểm</option>
+            </select>
+          </label>
+          <label>
+            <span>Hiệu lực</span>
+            <select id="quoteValidity">
+              <option value="open" selected>Chưa hết hạn nhận báo giá</option>
+              <option value="expired">Đã hết hạn nhận báo giá</option>
+              <option value="all">Tất cả</option>
+            </select>
+          </label>
+        </div>
+        <div class="scan-panel__dates" id="quoteCustomDates" hidden>
+          <label class="scan-panel__date">
+            <span>Từ ngày</span>
+            <input id="quoteDateFrom" type="date" />
+          </label>
+          <label class="scan-panel__date">
+            <span>Đến ngày</span>
+            <input id="quoteDateTo" type="date" />
+          </label>
+        </div>
+        <div class="scan-panel__filters">
+          <button id="quoteScanDefaultBtn" class="btn btn--ghost scan-panel__btn" type="button">Quét lịch mặc định</button>
+          <button id="quoteScanBtn" class="btn btn--primary scan-panel__btn" type="button">Tìm kiếm</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div>
+            <h2 class="panel__title">Yêu cầu báo giá đã lưu</h2>
+            <p id="quoteSummary">Chưa có dữ liệu</p>
+          </div>
+        </div>
+        <div class="panel__toolbar">
+          <input id="quoteListQuery" type="search" placeholder="Lọc mã, tên, chủ đầu tư, tỉnh" aria-label="Lọc yêu cầu báo giá" />
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Mã</th>
+                <th>Tên yêu cầu</th>
+                <th>Chủ đầu tư</th>
+                <th>Phân loại</th>
+                <th>Địa điểm</th>
+                <th>Đăng tải</th>
+                <th>Hết hạn</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="quoteTableBody">
+              <tr>
+                <td colspan="8" class="empty">Chưa quét yêu cầu báo giá</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="quotePagination"></div>
       </section>
     </main>
 

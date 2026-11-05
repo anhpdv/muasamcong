@@ -242,6 +242,103 @@ export async function searchByIndex(
   return data?.page?.content || [];
 }
 
+const QUOTE_MATCH_TYPES = new Set(["all-1", "all-0", "any-1", "any-0", "phrase-1"]);
+
+/**
+ * Tìm Yêu cầu báo giá (type es-ycbg) trên smart search của MSC.
+ */
+export async function searchQuotes(config, options = {}) {
+  const url = `${config.baseUrl}${config.searchEndpoint}`;
+  const pageSize = options.pageSize || config.pageSize || 10;
+  const filters = [
+    {
+      fieldName: "type",
+      searchType: "in",
+      fieldValues: ["es-ycbg"],
+    },
+  ];
+
+  const bidForms = (options.bidForms || []).filter(Boolean);
+  const bidForm = options.bidForm || "";
+  const formValues = bidForms.length ? bidForms : bidForm ? [bidForm] : [];
+  if (formValues.length) {
+    filters.push({
+      fieldName: "bidForm",
+      searchType: "in",
+      fieldValues: formValues,
+    });
+  }
+
+  const provinceValues = (options.provCodes || []).length
+    ? options.provCodes
+    : options.provCode
+      ? [options.provCode]
+      : [];
+  if (provinceValues.length) {
+    filters.push({
+      fieldName: "locations.provCode",
+      searchType: "in",
+      fieldValues: provinceValues,
+    });
+  }
+
+  const timezone = options.timezone || "Asia/Ho_Chi_Minh";
+  let from = options.publicDateFrom || "";
+  let to = options.publicDateTo || "";
+  if (options.publicDateToday) {
+    const range = getTodayRange(timezone);
+    from = range.from;
+    to = range.to;
+  }
+  if (from && to) {
+    filters.push({
+      fieldName: "publicDate",
+      searchType: "range",
+      from,
+      to,
+    });
+  }
+
+  const validity = options.validity || "";
+  if (validity === "open" || validity === "expired") {
+    const now = new Date().toISOString();
+    filters.push({
+      fieldName: "bidCloseDate",
+      searchType: "range",
+      from: validity === "open" ? now : "2000-01-01T00:00:00.000Z",
+      to: validity === "open" ? "2099-12-31T23:59:59.000Z" : now,
+    });
+  }
+
+  const keyword = String(options.keyword || "").trim();
+  const matchType = QUOTE_MATCH_TYPES.has(options.matchType) ? options.matchType : "all-1";
+  const payload = [
+    {
+      pageSize,
+      pageNumber: options.pageNumber || 0,
+      sortBy: options.sortBy || "publicDate",
+      sortType: options.sortType || "DESC",
+      query: [
+        {
+          index: "es-contractor-selection",
+          keyWord: keyword,
+          matchType,
+          matchFields: keyword
+            ? ["notifyNo", "name", "pname", "bidName", "investorName"]
+            : ["publicDate^10"],
+          filters,
+        },
+      ],
+    },
+  ];
+
+  const data = await postJson(url, payload);
+  if (!data?.page?.content) {
+    throw new Error("Phản hồi API yêu cầu báo giá thiếu page.content");
+  }
+  return data.page;
+}
+
 export async function searchTenders(config, options = {}) {
   const url = `${config.baseUrl}${config.searchEndpoint}`;
   const pageSize = options.pageSize || config.pageSize || 10;

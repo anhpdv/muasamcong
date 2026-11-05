@@ -277,6 +277,10 @@ p {
   flex-wrap: wrap;
 }
 
+.scan-panel__dates[hidden] {
+  display: none;
+}
+
 .scan-panel__date {
   display: flex;
   flex-direction: column;
@@ -304,6 +308,52 @@ p {
   border-color: var(--msc-gold);
   box-shadow: 0 0 0 3px rgba(196, 146, 79, 0.15);
   background: #fff;
+}
+
+.quote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.quote-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.quote-grid span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--msc-navy);
+}
+
+.quote-grid input,
+.quote-grid select {
+  width: 100%;
+  border: 1px solid var(--msc-border);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--msc-text);
+  background: #fbfcfd;
+}
+
+.quote-grid input:focus,
+.quote-grid select:focus {
+  outline: none;
+  border-color: var(--msc-gold);
+  box-shadow: 0 0 0 3px rgba(196, 146, 79, 0.15);
+  background: #fff;
+}
+
+@media (max-width: 980px) {
+  .quote-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .scan-panel__hint {

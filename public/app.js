@@ -62,9 +62,29 @@ const elements = {
   userChip: document.getElementById("userChip"),
   adminLink: document.getElementById("adminLink"),
   tabHainam: document.getElementById("tabHainam"),
+  tabQuotes: document.getElementById("tabQuotes"),
   backToTendersBtn: document.getElementById("backToTendersBtn"),
   viewTenders: document.getElementById("viewTenders"),
   viewHainam: document.getElementById("viewHainam"),
+  viewQuotes: document.getElementById("viewQuotes"),
+  quoteKeyword: document.getElementById("quoteKeyword"),
+  quoteMatchType: document.getElementById("quoteMatchType"),
+  quoteExclude: document.getElementById("quoteExclude"),
+  quoteInvestor: document.getElementById("quoteInvestor"),
+  quoteBidForm: document.getElementById("quoteBidForm"),
+  quoteCategory: document.getElementById("quoteCategory"),
+  quoteProvince: document.getElementById("quoteProvince"),
+  quoteTimePreset: document.getElementById("quoteTimePreset"),
+  quoteCustomDates: document.getElementById("quoteCustomDates"),
+  quoteDateFrom: document.getElementById("quoteDateFrom"),
+  quoteDateTo: document.getElementById("quoteDateTo"),
+  quoteValidity: document.getElementById("quoteValidity"),
+  quoteScanBtn: document.getElementById("quoteScanBtn"),
+  quoteScanDefaultBtn: document.getElementById("quoteScanDefaultBtn"),
+  quoteListQuery: document.getElementById("quoteListQuery"),
+  quoteTableBody: document.getElementById("quoteTableBody"),
+  quoteSummary: document.getElementById("quoteSummary"),
+  quotePagination: document.getElementById("quotePagination"),
   hainamSummary: document.getElementById("hainamSummary"),
   hainamAiBadge: document.getElementById("hainamAiBadge"),
   hainamCompanyName: document.getElementById("hainamCompanyName"),
@@ -294,15 +314,22 @@ function renderStatusSelect(item) {
 
 async function loadProvinces() {
   const data = await fetchJson("/api/provinces");
+  const options = data.provinces
+    .map(
+      (province) =>
+        `<option value="${escapeHtml(province.code)}">${escapeHtml(province.name)}</option>`,
+    )
+    .join("");
   elements.scanProvince.innerHTML = `
     <option value="">Chọn tỉnh/thành</option>
-    ${data.provinces
-      .map(
-        (province) =>
-          `<option value="${escapeHtml(province.code)}">${escapeHtml(province.name)}</option>`,
-      )
-      .join("")}
+    ${options}
   `;
+  if (elements.quoteProvince) {
+    elements.quoteProvince.innerHTML = `
+      <option value="">Tất cả tỉnh</option>
+      ${options}
+    `;
+  }
 }
 
 async function loadStats() {
@@ -1048,17 +1075,240 @@ function handleError(error) {
   showToast(error.message || "Có lỗi xảy ra");
 }
 
+const quoteState = { page: 1, q: "" };
+
+function resolveQuoteDateFilters() {
+  const preset = elements.quoteTimePreset.value;
+  const today = vietnamTodayKey();
+
+  if (preset === "today") {
+    return { publicDateToday: true, publicDateFrom: "", publicDateTo: "" };
+  }
+  if (preset === "7d") {
+    return { publicDateToday: false, ...toVietnamDayRange(shiftVietnamDay(-6), today) };
+  }
+  if (preset === "30d") {
+    return { publicDateToday: false, ...toVietnamDayRange(shiftVietnamDay(-29), today) };
+  }
+  if (preset === "custom") {
+    const from = elements.quoteDateFrom.value;
+    const to = elements.quoteDateTo.value;
+    if (!from || !to) {
+      throw new Error("Chọn đầy đủ Từ ngày và Đến ngày");
+    }
+    if (from > to) {
+      throw new Error("Từ ngày không được lớn hơn Đến ngày");
+    }
+    return { publicDateToday: false, ...toVietnamDayRange(from, to) };
+  }
+  return { publicDateToday: false, publicDateFrom: "", publicDateTo: "" };
+}
+
+let quoteItems = [];
+
+function renderDecisionPanel(decision) {
+  if (!decision) {
+    return `<p class="doc-empty">Bấm “Lấy quyết định phê duyệt” để tải file trên muasamcong.</p>`;
+  }
+  if (!decision.available) {
+    return `<p class="doc-empty">${escapeHtml(decision.message || "Gói này chưa có file quyết định phê duyệt.")}</p>`;
+  }
+  return `
+    <div class="detail-grid detail-grid--compact">
+      <div class="detail-item"><span>Ngày phê duyệt</span><strong>${escapeHtml(decision.decisionDate ? formatDate(decision.decisionDate) : "—")}</strong></div>
+      <div class="detail-item"><span>Số quyết định</span><strong>${escapeHtml(decision.decisionNo || "—")}</strong></div>
+    </div>
+    <p class="doc-summary">
+      <a href="${escapeAttr(decision.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(decision.fileName)}</a>
+    </p>
+  `;
+}
+
+function renderQuoteDetail(item, decision) {
+  elements.detailContent.innerHTML = `
+    <div class="dialog__header">
+      <p class="section-tag">Yêu cầu báo giá</p>
+      <h2>${escapeHtml(item.name)}</h2>
+    </div>
+    <div class="dialog__body">
+      <div class="detail-grid">
+        <div class="detail-item"><span>Mã</span><strong>${escapeHtml(item.notifyNo)}</strong></div>
+        <div class="detail-item"><span>Chủ đầu tư</span><strong>${escapeHtml(item.investorName || "—")}</strong></div>
+        <div class="detail-item"><span>Phân loại</span><strong>${escapeHtml(item.bidFormLabel || item.bidForm || "—")}</strong></div>
+        <div class="detail-item"><span>Địa điểm</span><strong>${escapeHtml(item.provName || "—")}</strong></div>
+        <div class="detail-item"><span>Đăng tải</span><strong>${escapeHtml(formatDate(item.publicDate))}</strong></div>
+        <div class="detail-item"><span>Hết hạn</span><strong>${escapeHtml(formatDate(item.bidCloseDate))}</strong></div>
+      </div>
+      <section class="doc-panel">
+        <div class="doc-panel__head"><h3>Thông tin quyết định phê duyệt</h3></div>
+        <div id="decisionBody">${renderDecisionPanel(decision)}</div>
+      </section>
+      <div class="detail-actions">
+        <button class="btn btn--primary" type="button" id="fetchDecisionBtn">Lấy quyết định phê duyệt</button>
+        <a class="btn btn--ghost" href="${escapeAttr(item.detailUrl)}" target="_blank" rel="noopener noreferrer">Xem trên muasamcong</a>
+      </div>
+    </div>
+  `;
+
+  const button = elements.detailContent.querySelector("#fetchDecisionBtn");
+  button.addEventListener("click", () => {
+    fetchQuoteDecision(item).catch(handleError);
+  });
+  elements.detailDialog.showModal();
+}
+
+async function openQuoteDetail(id) {
+  const item = quoteItems.find((quote) => quote.id === id || quote.notifyNo === id);
+  if (!item) {
+    throw new Error("Không tìm thấy yêu cầu báo giá trên trang này");
+  }
+  let decision = null;
+  try {
+    decision = await fetchJson(`/api/quotes/${encodeURIComponent(item.id)}/decision`);
+    if (!decision?.available && !decision?.message) {
+      decision = null;
+    }
+  } catch {
+    decision = null;
+  }
+  renderQuoteDetail(item, decision);
+}
+
+async function fetchQuoteDecision(item) {
+  const button = elements.detailContent.querySelector("#fetchDecisionBtn");
+  const body = elements.detailContent.querySelector("#decisionBody");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Đang tải...";
+  }
+  if (body) {
+    body.innerHTML = `<p class="doc-loading">Đang lấy file quyết định phê duyệt từ muasamcong...</p>`;
+  }
+  try {
+    const decision = await fetchJson(`/api/quotes/${encodeURIComponent(item.id)}/decision`, {
+      method: "POST",
+    });
+    if (body) {
+      body.innerHTML = renderDecisionPanel(decision);
+    }
+    showToast(decision.available ? `Đã tải ${decision.fileName}` : decision.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Lấy quyết định phê duyệt";
+    }
+  }
+}
+
+function renderQuoteTable(items) {
+  quoteItems = items;
+  if (!items.length) {
+    elements.quoteTableBody.innerHTML = `
+      <tr><td colspan="8" class="empty">Không có yêu cầu báo giá</td></tr>
+    `;
+    return;
+  }
+
+  elements.quoteTableBody.innerHTML = items
+    .map(
+      (item) => `
+      <tr>
+        <td><a href="${escapeAttr(item.detailUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.notifyNo)}</a></td>
+        <td>
+          <button class="linkish" type="button" data-quote-id="${escapeAttr(item.id)}">${escapeHtml(item.name)}</button>
+        </td>
+        <td>${escapeHtml(item.investorName || "—")}</td>
+        <td>${escapeHtml(item.bidFormLabel || item.bidForm || "—")}</td>
+        <td>${escapeHtml(item.provName || "—")}</td>
+        <td>${escapeHtml(formatDate(item.publicDate))}</td>
+        <td>${escapeHtml(formatDate(item.bidCloseDate))}</td>
+        <td><button class="btn btn--ghost btn--sm" type="button" data-quote-id="${escapeAttr(item.id)}">Chi tiết</button></td>
+      </tr>
+    `,
+    )
+    .join("");
+}
+
+function renderQuotePagination(pagination) {
+  const { page, totalPages, total } = pagination;
+  elements.quotePagination.innerHTML = `
+    <span>Trang ${page} / ${totalPages} · Tổng ${total} yêu cầu</span>
+    <div class="pagination__controls">
+      <button class="btn btn--ghost" type="button" data-quote-page="${page - 1}" ${page <= 1 ? "disabled" : ""}>Trước</button>
+      <button class="btn btn--ghost" type="button" data-quote-page="${page + 1}" ${page >= totalPages ? "disabled" : ""}>Sau</button>
+    </div>
+  `;
+}
+
+async function loadQuotes() {
+  const params = new URLSearchParams({
+    page: String(quoteState.page),
+    limit: "15",
+    q: quoteState.q,
+  });
+  const data = await fetchJson(`/api/quotes?${params}`);
+  renderQuoteTable(data.items || []);
+  renderQuotePagination(data.pagination || { page: 1, totalPages: 1, total: 0 });
+  const when = data.lastCheckAt ? ` · quét lúc ${formatDate(data.lastCheckAt)}` : "";
+  elements.quoteSummary.textContent = `Hiển thị ${(data.items || []).length} / ${data.pagination?.total || 0} yêu cầu báo giá${when}`;
+}
+
+async function scanQuotesFromUi() {
+  const dateFilters = resolveQuoteDateFilters();
+  const data = await fetchJson("/api/quotes/scan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      keyword: elements.quoteKeyword.value.trim(),
+      matchType: elements.quoteMatchType.value,
+      exclude: elements.quoteExclude.value.trim(),
+      investor: elements.quoteInvestor.value.trim(),
+      category: elements.quoteCategory.value.trim(),
+      bidForm: elements.quoteBidForm.value,
+      provCode: elements.quoteProvince.value,
+      validity: elements.quoteValidity.value,
+      maxPages: 10,
+      ...dateFilters,
+    }),
+  });
+  quoteState.page = 1;
+  showToast(data.message);
+  await loadQuotes();
+}
+
+async function scanQuotesDefault() {
+  const data = await fetchJson("/api/quotes/scan/default", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  quoteState.page = 1;
+  showToast(data.message);
+  await loadQuotes();
+}
+
 function switchAppTab(tab) {
   const isHainam = tab === "hainam";
-  elements.viewTenders.hidden = isHainam;
+  const isQuotes = tab === "quotes";
+  elements.viewTenders.hidden = isHainam || isQuotes;
   elements.viewHainam.hidden = !isHainam;
+  if (elements.viewQuotes) {
+    elements.viewQuotes.hidden = !isQuotes;
+  }
   if (elements.tabHainam) {
-    elements.tabHainam.classList.toggle("btn--primary", !isHainam);
-    elements.tabHainam.classList.toggle("btn--ghost", isHainam);
+    elements.tabHainam.classList.toggle("btn--primary", !isHainam && !isQuotes);
+    elements.tabHainam.classList.toggle("btn--ghost", isHainam || isQuotes);
     elements.tabHainam.textContent = isHainam ? "Đang xem năng lực" : "Năng lực Hải Nam";
+  }
+  if (elements.tabQuotes) {
+    elements.tabQuotes.classList.toggle("btn--primary", isQuotes);
+    elements.tabQuotes.classList.toggle("btn--ghost", !isQuotes);
   }
   if (isHainam) {
     loadHainamProfileUi().catch(handleError);
+  }
+  if (isQuotes) {
+    loadQuotes().catch(handleError);
   }
 }
 
@@ -1196,7 +1446,57 @@ async function deleteHainamDoc(id) {
 }
 
 elements.tabHainam?.addEventListener("click", () => switchAppTab("hainam"));
+elements.tabQuotes?.addEventListener("click", () => switchAppTab("quotes"));
 elements.backToTendersBtn?.addEventListener("click", () => switchAppTab("tenders"));
+elements.quoteTimePreset?.addEventListener("change", () => {
+  const isCustom = elements.quoteTimePreset.value === "custom";
+  elements.quoteCustomDates.hidden = !isCustom;
+});
+elements.quoteScanBtn?.addEventListener("click", async () => {
+  elements.quoteScanBtn.disabled = true;
+  elements.quoteScanBtn.textContent = "Đang quét...";
+  try {
+    await scanQuotesFromUi();
+  } catch (error) {
+    handleError(error);
+  } finally {
+    elements.quoteScanBtn.disabled = false;
+    elements.quoteScanBtn.textContent = "Tìm kiếm";
+  }
+});
+elements.quoteScanDefaultBtn?.addEventListener("click", async () => {
+  elements.quoteScanDefaultBtn.disabled = true;
+  try {
+    await scanQuotesDefault();
+  } catch (error) {
+    handleError(error);
+  } finally {
+    elements.quoteScanDefaultBtn.disabled = false;
+  }
+});
+elements.quoteListQuery?.addEventListener(
+  "input",
+  debounce(() => {
+    quoteState.q = elements.quoteListQuery.value.trim();
+    quoteState.page = 1;
+    loadQuotes().catch(handleError);
+  }, 250),
+);
+elements.quoteTableBody?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-quote-id]");
+  if (!button) {
+    return;
+  }
+  openQuoteDetail(button.dataset.quoteId).catch(handleError);
+});
+elements.quotePagination?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-quote-page]");
+  if (!button || button.disabled) {
+    return;
+  }
+  quoteState.page = Number(button.dataset.quotePage);
+  loadQuotes().catch(handleError);
+});
 elements.hainamSaveMetaBtn?.addEventListener("click", () => {
   saveHainamMetaUi().catch(handleError);
 });
