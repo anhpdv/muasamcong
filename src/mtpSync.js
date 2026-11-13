@@ -66,6 +66,10 @@ export function getMtpConfig() {
   const mtpUrl = (process.env.MTP_BACKEND_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
   const endpoint = process.env.MTP_API_ENDPOINT || "/api/method/crawl_document.api.msc.save_msc_tender";
   const apiUrl = `${mtpUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  const quoteEndpoint = process.env.MTP_QUOTE_API_ENDPOINT || "/api/method/crawl_document.api.msc.save_msc_quote";
+  const quoteApiUrl = `${mtpUrl}${quoteEndpoint.startsWith("/") ? "" : "/"}${quoteEndpoint}`;
+
   const apiKey = (process.env.MTP_API_KEY || "").trim();
   const apiSecret = (process.env.MTP_API_SECRET || "").trim();
   const authToken = (process.env.MTP_AUTH_TOKEN || "").trim();
@@ -75,6 +79,8 @@ export function getMtpConfig() {
     mtpUrl,
     endpoint,
     apiUrl,
+    quoteEndpoint,
+    quoteApiUrl,
     hasAuth,
     apiKeyPreview: apiKey ? `${apiKey.slice(0, 6)}...` : "(trống)",
     apiSecretPreview: apiSecret ? `${apiSecret.slice(0, 4)}...${apiSecret.slice(-4)}` : "(trống)",
@@ -126,6 +132,7 @@ export async function testMtpConnection() {
     connectivity: null,
     auth: null,
     doctypeExists: null,
+    quoteDoctypeExists: null,
   };
 
   // Test 1: Connectivity & Auth check
@@ -180,7 +187,7 @@ export async function testMtpConnection() {
     const docUrl = `${config.mtpUrl}/api/resource/MTP MSC Tender?limit_page_length=1`;
     const res = await fetch(docUrl, {
       method: "GET",
-      headers: buildHeaders(false), // Dùng guest header nếu auth chưa đúng
+      headers: buildHeaders(false),
     });
     const body = await res.text();
 
@@ -204,6 +211,37 @@ export async function testMtpConnection() {
     }
   } catch (err) {
     result.doctypeExists = { ok: false, error: err.message };
+  }
+
+  // Test 3: Kiểm tra DocType MTP MSC Quote tồn tại qua API
+  try {
+    const quoteDocUrl = `${config.mtpUrl}/api/resource/MTP MSC Quote?limit_page_length=1`;
+    const res = await fetch(quoteDocUrl, {
+      method: "GET",
+      headers: buildHeaders(false),
+    });
+    const body = await res.text();
+
+    if (res.ok) {
+      try {
+        const data = JSON.parse(body);
+        result.quoteDoctypeExists = {
+          ok: true,
+          count: data.data?.length ?? 0,
+          message: "DocType MTP MSC Quote tồn tại trên Cloud",
+        };
+      } catch {
+        result.quoteDoctypeExists = { ok: false, error: "Invalid JSON", body: body.substring(0, 200) };
+      }
+    } else {
+      result.quoteDoctypeExists = {
+        ok: false,
+        status: res.status,
+        error: body.substring(0, 300),
+      };
+    }
+  } catch (err) {
+    result.quoteDoctypeExists = { ok: false, error: err.message };
   }
 
   return result;
@@ -291,6 +329,97 @@ export async function syncToMtp(tenders) {
     } catch (error) {
       const errMsg = `Lỗi kết nối cho ${key}: ${error.message}`;
       console.error(`[MTP Sync Error] ${errMsg}`);
+      syncResults.failed += 1;
+      syncResults.errors.push(errMsg);
+    }
+  }
+
+  syncResults.ok = syncResults.failed === 0;
+
+  return syncResults;
+}
+
+/**
+ * Đồng bộ danh sách Yêu cầu báo giá sang MTP backend.
+ */
+export async function syncQuotesToMtp(quotes) {
+  if (!quotes) {
+    return { ok: true, synced: 0, failed: 0, errors: [], skipped: true };
+  }
+
+  const quoteList = Array.isArray(quotes) ? quotes : [quotes];
+  if (quoteList.length === 0) {
+    return { ok: true, synced: 0, failed: 0, errors: [], skipped: true };
+  }
+
+  const config = getMtpConfig();
+  const apiUrl = config.quoteApiUrl;
+  const syncResults = {
+    ok: true,
+    synced: 0,
+    failed: 0,
+    errors: [],
+    warnings: [],
+    apiUrl,
+    hasAuth: config.hasAuth,
+  };
+
+  for (const quote of quoteList) {
+    const key = quote.notifyNoStand || quote.notifyNo || quote.id || "unknown";
+    const { raw, ...cleanQuote } = quote;
+    const bodyPayload = JSON.stringify({ quote_data: cleanQuote });
+
+    let response = null;
+    let usedGuestFallback = false;
+
+    try {
+      // 1. Thử gửi với Auth header trước
+      response = await fetch(apiUrl, {
+        method: "POST",
+        headers: buildHeaders(true),
+        body: bodyPayload,
+      });
+
+      // 2. Nếu trả về 401 AuthenticationError, tự động thử lại mà KHÔNG gửi Auth header (Guest)
+      if (response.status === 401 && config.hasAuth) {
+        usedGuestFallback = true;
+        const warnMsg = `[MTP Quote Sync Warning] API Key/Secret trong .env bị lỗi 401 cho YCBG ${key}. Đang tự động thử lại với Guest mode...`;
+        console.warn(warnMsg);
+        if (!syncResults.warnings.includes(warnMsg)) {
+          syncResults.warnings.push(warnMsg);
+        }
+
+        response = await fetch(apiUrl, {
+          method: "POST",
+          headers: buildHeaders(false),
+          body: bodyPayload,
+        });
+      }
+
+      if (!response.ok) {
+        const errText = await response.text();
+        const errMsg = `HTTP ${response.status} cho YCBG ${key}: ${errText.substring(0, 300)}`;
+        console.error(`[MTP Quote Sync] ${errMsg}`);
+        syncResults.failed += 1;
+        syncResults.errors.push(errMsg);
+        continue;
+      }
+
+      const resData = await response.json();
+      const msg = resData?.message || resData;
+      if (msg?.success) {
+        const modeNote = usedGuestFallback ? " (Guest Mode fallback)" : "";
+        console.log(`[MTP Quote Sync] ✅ Đã lưu YCBG ${key} sang MTP (docname: ${msg.docname})${modeNote}`);
+        syncResults.synced += 1;
+      } else {
+        const errMsg = `API error cho YCBG ${key}: ${JSON.stringify(msg).substring(0, 300)}`;
+        console.error(`[MTP Quote Sync] ❌ ${errMsg}`);
+        syncResults.failed += 1;
+        syncResults.errors.push(errMsg);
+      }
+    } catch (error) {
+      const errMsg = `Lỗi kết nối cho YCBG ${key}: ${error.message}`;
+      console.error(`[MTP Quote Sync Error] ${errMsg}`);
       syncResults.failed += 1;
       syncResults.errors.push(errMsg);
     }

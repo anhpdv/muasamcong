@@ -8,6 +8,7 @@ import {
   loadState,
   saveState,
 } from "./storage.js";
+import { syncQuotesToMtp } from "./mtpSync.js";
 
 export const QUOTE_BID_FORMS = [
   { value: "HHDVK", label: "Gói thầu hàng hóa/dịch vụ" },
@@ -189,6 +190,16 @@ export async function scanQuotes(config, options = {}) {
     await appendJsonl(paths.quotesPath, newRecords);
   }
 
+  let mtpSyncResult = null;
+  if (normalized.length > 0) {
+    try {
+      mtpSyncResult = await syncQuotesToMtp(normalized);
+    } catch (err) {
+      console.error("[MTP Quote Sync Scan Error]", err);
+      mtpSyncResult = { ok: false, synced: 0, failed: normalized.length, errors: [err.message] };
+    }
+  }
+
   state.lastCheckAt = crawledAt;
   if (normalized[0]?.publicDate) {
     state.lastPublicDate = normalized[0].publicDate;
@@ -204,6 +215,7 @@ export async function scanQuotes(config, options = {}) {
     totalSeen: state.seenKeys.size,
     ranAt: crawledAt,
     items: normalized,
+    mtpSync: mtpSyncResult,
   };
 }
 

@@ -81,6 +81,7 @@ const elements = {
   quoteValidity: document.getElementById("quoteValidity"),
   quoteScanBtn: document.getElementById("quoteScanBtn"),
   quoteScanDefaultBtn: document.getElementById("quoteScanDefaultBtn"),
+  quoteSyncMtpBtn: document.getElementById("quoteSyncMtpBtn"),
   quoteListQuery: document.getElementById("quoteListQuery"),
   quoteTableBody: document.getElementById("quoteTableBody"),
   quoteSummary: document.getElementById("quoteSummary"),
@@ -1472,6 +1473,23 @@ elements.quoteScanDefaultBtn?.addEventListener("click", async () => {
     handleError(error);
   } finally {
     elements.quoteScanDefaultBtn.disabled = false;
+  }
+});
+elements.quoteSyncMtpBtn?.addEventListener("click", async () => {
+  elements.quoteSyncMtpBtn.disabled = true;
+  elements.quoteSyncMtpBtn.textContent = "Đang đồng bộ...";
+  try {
+    const res = await fetchJson("/api/quotes/sync-mtp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    showToast(res.message || "Đã đồng bộ YCBG sang MTP thành công");
+  } catch (error) {
+    handleError(error);
+  } finally {
+    elements.quoteSyncMtpBtn.disabled = false;
+    elements.quoteSyncMtpBtn.textContent = "Đồng bộ MTP";
   }
 });
 elements.quoteListQuery?.addEventListener(

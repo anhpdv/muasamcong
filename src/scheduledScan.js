@@ -100,6 +100,14 @@ export async function runScheduledScan(config, rootDir) {
     }
   }
 
+  // Đồng bộ chạy quét và đồng bộ Yêu cầu báo giá sang MTP
+  let quoteScanResult = null;
+  try {
+    quoteScanResult = await runScheduledQuoteScan(config, rootDir);
+  } catch (err) {
+    console.error("[MTP Quote Sync Scheduled Scan Error]", err);
+  }
+
   if (normalized[0]?.publicDate) {
     mutableState.lastPublicDate = normalized[0].publicDate;
   }

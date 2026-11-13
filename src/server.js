@@ -56,7 +56,7 @@ import {
   WORKFLOW_STATUS_OPTIONS,
 } from "./tenderStatus.js";
 import { tenderKey } from "./normalize.js";
-import { syncToMtp, testMtpConnection, getMtpConfig } from "./mtpSync.js";
+import { syncToMtp, syncQuotesToMtp, testMtpConnection, getMtpConfig } from "./mtpSync.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -909,6 +909,28 @@ function createServer(config, paths, auth) {
           ok: syncResult.ok,
           message: syncResult.ok
             ? `Đã đồng bộ ${syncResult.synced}/${targets.length} gói thầu sang MTP`
+            : `Đồng bộ: ${syncResult.synced} thành công, ${syncResult.failed} lỗi`,
+          count: targets.length,
+          mtpSync: syncResult,
+        });
+        return;
+      }
+
+      if (url.pathname === "/api/quotes/sync-mtp" && request.method === "POST") {
+        const body = await readBody(request);
+        const qPaths = quotePaths(config, rootDir);
+        const catalog = await loadQuoteCatalog(qPaths);
+        let targets = catalog;
+        if (body.id) {
+          targets = catalog.filter(
+            (item) => item.id === body.id || item.notifyNo === body.id || item.notifyNoStand === body.id || tenderKey(item) === body.id,
+          );
+        }
+        const syncResult = await syncQuotesToMtp(targets);
+        sendJson(response, 200, {
+          ok: syncResult.ok,
+          message: syncResult.ok
+            ? `Đã đồng bộ ${syncResult.synced}/${targets.length} YCBG sang MTP`
             : `Đồng bộ: ${syncResult.synced} thành công, ${syncResult.failed} lỗi`,
           count: targets.length,
           mtpSync: syncResult,
